@@ -11,7 +11,7 @@ export default async function BlogPage() {
       <div className="flex flex-col items-start gap-4 md:flex-row md:justify-between">
         <div className="flex-1 space-y-4">
           <h1 className="inline-block font-black text-4xl lg:text-5xl">Blog</h1>
-          <p className="text-xl text-muted-foreground">sdfkdls;fksd;fs</p>
+          <p className="text-xl text-muted-foreground">BLOG</p>
         </div>
       </div>
       <hr className="mt-8" />

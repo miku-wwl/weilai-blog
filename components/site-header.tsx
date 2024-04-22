@@ -2,8 +2,8 @@ import { siteConfig } from "@/config/site";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { buttonVariants } from "./ui/button";
-import { Icons } from "./icons";
 import { MainNav } from "./main-nav";
+import { AiFillGithub } from "react-icons/ai";
 
 export function SiteHeader() {
   return (
@@ -23,37 +23,7 @@ export function SiteHeader() {
                   "w-10 px-0"
                 )}
               >
-                <Icons.gitHub className="h-4 w-4" />
-                <span className="sr-only">GitHub</span>
-              </div>
-            </Link>
-            <Link
-              href={siteConfig.links.github}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <div
-                className={cn(
-                  buttonVariants({ variant: "ghost" }),
-                  "w-10 px-0"
-                )}
-              >
-                <Icons.twitter className="h-4 w-4" />
-                <span className="sr-only">GitHub</span>
-              </div>
-            </Link>
-            <Link
-              href={siteConfig.links.github}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <div
-                className={cn(
-                  buttonVariants({ variant: "ghost" }),
-                  "w-10 px-0"
-                )}
-              >
-                <Icons.logo className="h-4 w-4" />
+                <AiFillGithub className="h-4 w-4" />
                 <span className="sr-only">GitHub</span>
               </div>
             </Link>

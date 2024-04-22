@@ -1,10 +1,7 @@
 export const siteConfig = {
-  name: "Song blog",
-  url: "thdtjdgml415@gmail.com",
-  description: "Next 14 blog using velite, tailwind, shadcn",
-  author: "song",
+  name: "Weilai's blog",
   links: {
-    github: "https://github.com/thdtjdgml415",
+    github: "https://github.com/miku-wwl",
     linkedIn: "",
     personalSite: "",
   },

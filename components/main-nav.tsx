@@ -5,7 +5,7 @@ import { siteConfig } from "@/config/site";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import { AiFillHome } from "react-icons/ai";
-
+ 
 export function MainNav() {
   const pathname = usePathname();
   return (

@@ -1,6 +1,7 @@
 import { posts } from "#site/content";
 import MDXcomponent from "@/components/mdx-components";
 import { notFound } from "next/navigation";
+import "@/styles/mdx.css";
 interface PostPageProps {
   params: {
     slug: string[];
@@ -9,7 +10,7 @@ interface PostPageProps {
 
 async function getPostFromPageParams(params: PostPageProps["params"]) {
   const slug = params?.slug?.join("/");
-  console.log("첫 렌더링시 불러옴", slug);
+  console.log("首次渲染时载入", slug);
   const post = posts.find((post) => post.slugAsParams === slug);
   console.log("post", post);
   return post;

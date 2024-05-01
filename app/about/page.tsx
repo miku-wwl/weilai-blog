@@ -1,5 +1,6 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { siteConfig } from "@/config/site";
+import Link from "next/link";
 
 export default async function AboutPage() {
   return (
@@ -26,8 +27,11 @@ export default async function AboutPage() {
           </p>
         </div>
         <p className="text-muted-foreground text-lg py-4">
-          ✅ 擅长各种Hello Wolrd. <br />
-          ✅ 精通excel. <br />
+          <Link href="/blog/hello-world">
+            ✅ 擅长各种Hello Wolrd.
+            <br />
+          </Link>
+          <p>✅ 精通excel.</p>
           ✅ 摸鱼工程师. <br />
           ✅ Holding the sun, moon, and stars, there is no one like me in the
           world. <br />

@@ -29,13 +29,10 @@ export function MobileNav() {
             Blog
           </MobileLink>
           <MobileLink href="/about" onOpenChange={setOpen}>
-            About
+            About Author
           </MobileLink>
           <Link target="_blank" rel="noreferrer" href={siteConfig.links.github}>
             GitHub
-          </Link>
-          <Link target="_blank" rel="noreferrer" href={siteConfig.links.github}>
-            twitter
           </Link>
         </div>
       </SheetContent>

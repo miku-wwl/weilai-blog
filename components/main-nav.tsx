@@ -5,7 +5,7 @@ import { siteConfig } from "@/config/site";
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import { AiFillHome } from "react-icons/ai";
- 
+
 export function MainNav() {
   const pathname = usePathname();
   return (
@@ -30,7 +30,7 @@ export function MainNav() {
           pathname === "/about" ? "text-foreground" : "text-foreground/60"
         )}
       >
-        about
+        About Author
       </Link>
     </nav>
   );

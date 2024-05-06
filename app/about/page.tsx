@@ -38,9 +38,6 @@ export default async function AboutPage() {
           <br />
           ✅ 熟练掌握React、NextJs、Springboot、Gin开发
           <br />
-          ✅ 天玄大陆-合欢宗-太上长老 <br />
-          <br />
-          <br />
           <br />
           工作经历:
           <br />
@@ -54,15 +51,6 @@ export default async function AboutPage() {
             <u> ✅ 基于Next的跨框架SaaS应用.</u>
             <br />
           </Link>
-          <br />
-          <p>招募道侣:</p>
-          缘起修行路，共赴长生途。吾乃合欢宗太上长老，欲寻道侣一名，共探天地奥秘，携手飞升。{" "}
-          <br />
-          <br />
-          基本要求如下： <br />
-          ✅天灵根，修行心性坚定，修为不低于化神期。 帝级灵宠一只。 <br />
-          ✅仙级洞府两座。 <br />
-          ✅有意者，请书信一封，附带修行心得及未来修行愿景，投入合欢宗山门下{" "}
           <br />
           <br />
         </p>

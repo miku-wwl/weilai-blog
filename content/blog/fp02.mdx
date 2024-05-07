@@ -1,0 +1,183 @@
+---
+title: Treating Functions as First-Class Citizens
+description: Treating Functions as First-Class Citizens
+date: 2024-05-08
+tags: ["code", "rehype pretty", "mdx"]
+published: true
+---
+
+### 类型别名附加函数
+
+让我们向结构体中添加一个带有自己类型别名的年龄字段：
+
+```go
+type age uint
+type Person struct {
+    name      string
+    age       age
+    phoneNumber phoneNumber
+}
+```
+
+在 Go 中，我们无法对诸如 uint 这样的原始类型附加函数。但是，当我们分配一个类型别名时，这个限制就没有了。因此，我们现在可以向 age 类型附加函数，实际上就是向 uint 附加函数：
+
+```go
+func (a age) valid() bool {
+    return a < 120
+}
+
+func isValidPerson(p Person) bool {
+    return p.age.valid() && p.name != ""
+}
+```
+
+如果我们尝试在原始类型上附加一个函数，我们将无法编译程序：
+
+```go
+func (u uint) valid() bool {
+    return u < 120
+}
+```
+
+这会抛出以下错误：
+
+```shell
+./prog.go:30:7: cannot define new methods on non-local type uint
+Go build failed.
+```
+
+### 内联函数定义
+
+我们可以像内联定义结构体一样内联定义函数：
+
+```go
+func main() {
+    // 内联结构体示例
+    inlinePersonStruct := struct {
+        name string
+    }{
+        name: "John",
+    }
+
+    ints := []int{1, 2, 3}
+    inlineFunction := func(i int) bool { return i > 2 }
+    filter(ints, inlineFunction)
+}
+```
+
+### 匿名函数
+
+没有名称的函数称为匿名函数。
+
+```go
+func main() {
+    filter([]int{1, 2, 3}, func(i int) bool { return i > 2 })
+}
+```
+
+### 从函数返回函数
+
+```go
+func createLargerThanPredicate(threshold int) predicate {
+    return func(i int) bool {
+        return i > threshold
+    }
+}
+```
+
+### 函数在 var 块中
+
+我们可以在包中创建一系列可复用的函数：
+
+```go
+var (
+    largerThanTwo = createLargerThanPredicate(2)
+    largerThanFive = createLargerThanPredicate(5)
+    largerThanHundred = createLargerThanPredicate(100)
+)
+```
+
+### 函数不能在 const 块中
+
+```go
+const (
+    largerThanTwo = createLargerThanPredicate(2)
+    largerThanFive = createLargerThanPredicate(5)
+    largerThanHundred = createLargerThanPredicate(100)
+)
+```
+
+这将生成以下错误：
+
+```shell
+./prog.go:8:23: createLargerThanPredicate(2) (value of type predicate) is not constant
+./prog.go:9:23: createLargerThanPredicate(5) (value of type predicate) is not constant
+./prog.go:10:23: createLargerThanHundred(100) (value of type predicate) is not constant
+
+```
+
+### 将函数存储在一个数组中
+
+```go
+var (
+    largerThanTwo = createLargerThanPredicate(2)
+    largerThanFive = createLargerThanPredicate(5)
+    largerThanHundred = createLargerThanPredicate(100)
+)
+
+func main() {
+    ints := []int{1, 2, 3, 6, 101}
+    predicates := []predicate{largerThanTwo, largerThanFive, largerThanHundred}
+    for _, predicate := range predicates {
+        fmt.Printf("%v\n", filter(ints, predicate))
+    }
+}
+```
+
+### 将函数存储在一个 Map 中
+
+```go
+func main() {
+    ints := []int{1, 2, 3, 6, 101}
+    dispatcher := map[string]predicate{
+        "2": largerThanTwo,
+        "5": largerThanFive,
+    }
+    fmt.Printf("%v\n", filter(ints, dispatcher["2"]))
+}
+```
+
+### 将函数存储在一个结构体中
+
+```go
+type ConstraintChecker struct {
+    largerThan predicate
+    smallerThan predicate
+}
+```
+
+接下来，我们为这个结构体创建一个方法。check 方法接受一个整数输入，并分别将这个值传递给 largerThan 和 smallerThan 函数。
+
+```go
+func (c ConstraintChecker) check(input int) bool {
+    return c.largerThan(input) && c.smallerThan(input)
+}
+```
+
+现在我们已经创建了结构体和方法，让我们来看看如何使用这个结构体：
+
+```go
+func main() {
+    checker := ConstraintChecker{
+        largerThan: createLargerThanPredicate(2),
+        smallerThan: func(i int) bool { return i < 10 },
+    }
+    fmt.Printf("%v\n", checker.check(5))
+}
+```
+
+Example 见 github
+
+Example 1 – map dispatcher
+
+Example 2 – mocking functions for testing

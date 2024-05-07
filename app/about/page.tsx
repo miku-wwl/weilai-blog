@@ -51,6 +51,13 @@ export default async function AboutPage() {
             <u> ✅ 基于Next的跨框架SaaS应用.</u>
             <br />
           </Link>
+          <Link href="/blog/fp">
+            <u>
+              ✅ Functional Programming in Go - Apply functional techniques in
+              Golang.
+            </u>
+            <br />
+          </Link>
           <br />
           <br />
         </p>

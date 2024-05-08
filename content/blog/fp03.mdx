@@ -1,0 +1,155 @@
+---
+title: Higher-Order Functions
+description: Higher-Order Functions
+date: 2024-05-09
+tags: ["code", "rehype pretty", "mdx"]
+published: true
+---
+
+### 高阶函数
+
+高阶函数是函数式编程中的一个核心概念，它指的是可以接受一个或多个函数作为输入参数，或者其输出结果为一个函数的函数。这种特性使得高阶函数在处理复杂逻辑、代码复用和抽象化方面表现出色。
+
+### Go 语言中的变量作用域
+
+Go 语言采用词法作用域（lexical scoping），这意味着变量在其创建的上下文中被识别并可使用。在 Go 中，“块”用来界定代码中的位置。
+
+```go
+package main
+
+import "fmt"
+
+// 位置1
+func main() {
+    // 位置2
+    b := true
+    if b {
+        // 位置3
+        fmt.Println(b)
+    }
+}
+```
+
+这段代码中有三个作用域位置：
+
+- 第一个位置（位置 1）是包作用域。我们的 main 函数位于这个作用域层级。
+- 下一个位置在 main 函数内部（位置 2），这里我们定义了布尔变量 b。
+- 第三个位置位于 if 语句内部（位置 3）。在 Go 以及其他许多语言中，代码块由花括号定义。
+
+### 在函数中捕获变量上下文（闭包）
+
+匿名函数本质上是一个没有标识符附着在其上的函数声明。这是我们使用的通用模板：
+
+```go
+// 位置1
+func outerFunction() func() {
+    // 位置2
+    fmt.Println("outer function")
+    return func() {
+        // 位置3
+        fmt.Println("inner function")
+    }
+}
+```
+
+创建一个生成问候函数的函数。我们的外部函数将决定显示的问候消息，内部函数将姓名作为输入，并返回问候语与姓名的组合：
+
+```go
+func main() {
+    greetingFunc := createGreeting()
+    response := greetingFunc("Ana")
+    fmt.Println(response)
+}
+
+func createGreeting() func(string) string {
+    s := "Hello "
+    return func(name string) string {
+        return s + name
+    }
+}
+```
+
+尽管在 createGreeting 函数结束时变量 s 超出了作用域，但变量内容实际上被内部函数捕获。因此，当我们在 main 函数中调用 greetingFunc 时，捕获的问候语被固定为 Hello。在内部函数中捕获变量就是闭包。
+
+### 部分应用（Partial Applications）
+
+部分应用函数是指取 N 个参数的函数，并“固定”其中一部分参数。通过固定一部分参数，它们变得固定不变，而其他输入参数保持灵活。
+
+扩展 createGreeting 函数
+
+```go
+func createGreeting(greeting string) func(string) string {
+    return func(name string) string {
+        return greeting + name
+    }
+}
+```
+
+创建几个这样的函数并使用它们打印输出
+
+```go
+func main() {
+    firstGreeting := createGreeting("Well, hello there ")
+    secondGreeting := createGreeting("Hola ")
+    fmt.Println(firstGreeting("Remi"))
+    fmt.Println(firstGreeting("Sean"))
+    fmt.Println(secondGreeting("Ana"))
+}
+```
+
+### 示例：DogSpawner
+
+见 github 仓库
+
+### 函数柯里化（Function Currying），将 n 元函数简化为一元函数
+
+```go
+func F(a, b, c) int {}
+
+func Fa(a) Fb(b)
+func Fb(b) Fc(c)
+func Fc(c) int
+```
+
+如果不使用柯里化，我们的函数看起来像这样：
+
+```go
+func threeSum(a, b, c int) int {
+    return a + b + c
+}
+```
+
+使用柯里化，同样的示例将转换为：
+
+```go
+func threeSumCurried(a int) func(int) func(int) int {
+    return func(b int) func(int) int {
+        return func(c int) int {
+            return a + b + c
+        }
+    }
+}
+```
+
+在 main 函数中调用它们时，两者返回相同的结果.
+
+```go
+func main() {
+    fmt.Println(threeSum(10, 20, 30))
+    fmt.Println(threeSumCurried(10)(20)(30))
+}
+```
+
+### 示例：函数柯里化
+
+见 github 仓库
+
+### 示例：服务器构造器
+
+见 github 仓库
+
+### 总结
+
+通过使用闭包，我们学习了如何在外部函数和内部函数之间共享变量的上下文。这使我们能够构建灵活的应用程序。
+接下来，我们学习了如何使用部分应用函数来固定 n 元函数的某些参数。这向我们展示了如何为函数创建默认配置。
+最后，我们了解了函数柯里化及其与部分应用的关系。

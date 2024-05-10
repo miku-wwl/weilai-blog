@@ -253,3 +253,111 @@ return sliceB
 ### 应用场景
 
 这个`fmap`函数非常灵活，可以用于各种数据转换场景，比如将一个整数切片转换为对应的字符串切片（每个整数转换为其字符串形式），或者对一个用户定义的数据结构列表应用某种处理逻辑等。它体现了函数式编程中的“映射”概念，使得代码更加简洁、可读性强，并且易于复用。
+
+让我们看看如何使用这个函数。想象一下，我们有一个整数切片，我们想把它转换成字符串切片。我们可以使用 fmap 函数来做到这一点。我们所需要做的就是为 fmap 提供一个接受整数并返回字符串的函数：
+
+```go
+import (
+    "fmt"
+    "strconv"
+)
+
+func main() {
+    integers := []int{1, 2, 3}
+    strings := fmap(strconv.Itoa, integers)
+    fmt.Printf("%T transformed to %T - %v\n", integers, strings, strings)
+}
+```
+
+当我们运行前面的函数时，我们得到以下输出（记住%T 打印变量的类型）：
+
+```
+[]int transformed to []string - [1 2 3]
+```
+
+这告诉我们，我们的 int 切片被转换成了字符串切片，其中包含的值不出意外是 [1, 2, 3]。
+
+这就是一个函子大致是什么。它是一个函数，可以将给定数据结构中的所有数据转换为不同类型的其他数据。fmap 的实现是一个纯净的、高阶函数。
+
+### 从函子到单子
+
+单子是一种软件设计模式，它是一种数据类型，可以组合相似类型的功能，并将非单子类型的结果封装到一个新的单子类型中，提供额外的功能。为了让一个类型成为一个单子，它需要定义两个功能：
+
+- 一个函数，将类型 T 的值包装成 Monad[T]
+- 一个函数，组合 Monad[T]类型的函数
+
+我们将通过一个实际的例子来演示单子。单子类型是一个含有底层具体类型的容器（例如，String）。一个流行的单子是 Maybe 单子，在某些编程语言中也被称为 Optional。Maybe 单子是一种可能包含具体值但也可能为空的类型。
+
+在 Go 中模拟 Maybe 单子，我们将使用定义在结构体上的接口来定义操作。接下来，我们也会创建两个实现，一个表示值存在的情况，另一个表示值不存在的情况：
+
+```go
+type Maybe[A any] interface {
+	Get() (A, bool)
+	GetOrElse(def A) A
+}
+
+type JustMaybe[A any] struct {
+	value A
+}
+
+func (j JustMaybe[A]) Get() (A, bool) {
+	return j.value, true
+}
+
+func (j JustMaybe[A]) GetOrElse(def A) A {
+	return j.value
+}
+
+type NothingMaybe[A any] struct{}
+
+func (n NothingMaybe[A]) Get() (A, bool) {
+	var zero A
+	return zero, false
+}
+
+func (n NothingMaybe[A]) GetOrElse(def A) A {
+	return def
+}
+```
+
+上述代码定义了 Maybe 接口和其实现。我们没有使用指针，只使用具体的类型。Maybe 单子常被引入以避免指针的使用。通过避免指针，我们可以消除在空指针上调用函数时发生的运行时错误。空指针（在 Go 中称为 nil）从类型分类的角度来看也不太合理。nil 指针属于每种类型，意味着里面没有真正有用的信息，而我们希望类型系统尽可能声明式。
+
+对于值的存在与否，我们使用的两个实现分别是 Just 和 Nothing。这些名称借用了 Haskell 的命名，你会发现不同的编程语言中这些值有不同的名称。Just 表示存在具体值，而 Nothing 表示不存在。我们首先实现值存在的用例，使用 JustMaybe 类型：
+
+接下来，我们也为这两种实现创建类似构造函数的方法，这些方法可以将给定类型的值包装到单子表示中。回想一下，这是我们的单子模式的要求：
+
+```go
+func Just[A any](a A) Maybe[A] {
+	return JustMaybe[A]{value: a}
+}
+
+func Nothing[A any]() Maybe[A] {
+	return NothingMaybe[A]{}
+}
+```
+
+在上面的函数中，我们通过查找给定的键从 map 中获取值。如果值存在，我们返回单子的 JustMaybe 实现；否则，我们返回 NothingMaybe 实现。
+
+可以编写便利函数，比如 fromNullable(\*value)，通过检查传递给函数的值是否存在，返回一个 JustMaybe 或 NothingMaybe。
+
+请记住，我们的单子类型是一个保存底层元素的数据结构。因此，我们也可以在这个类型上实现 fmap 函数。在这个实现中，我们将把类型 A 的 Maybe 转换为类型 B 的 Maybe。我们需要提供一个函数，用来从底层类型 A 映射到类型 B 以完成这一操作：
+
+```go
+func fmap[A, B any](m Maybe[A], mapFunc func(A) B) Maybe[B] {
+	switch m.(type) {
+	case JustMaybe[A]:
+		j := m.(JustMaybe[A])
+		return Just(B(mapFunc(j.value)))
+	case NothingMaybe[A]:
+		return Nothing[B]{}
+	default:
+		panic("unknown type")
+	}
+}
+```
+
+### 总结
+
+本章中，我们探讨了 Go 中的不可变性。通过回顾了 Go 中如何通过值传递或引用传递实现不可变性，我们对此有了简单的复习。我们了解到，使用指针并不能保证代码的性能一定优于避免使用它们的情况。我们还讨论了不可变代码的一些好处，比如提高了代码库的可读性和可理解性。此外，我们还触及了这如何简化了并发的正确实现，因为在函数间状态不会被改变。
+
+最后，我们在上一章开始讨论纯函数的基础上，通过查看单子以及其实用实现——Maybe 单子，结束了这一话题。

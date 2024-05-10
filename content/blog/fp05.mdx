@@ -1,0 +1,255 @@
+---
+title: Immutability
+description: Immutability
+date: 2024-05-10
+tags: ["code", "rehype pretty", "mdx"]
+published: true
+---
+
+### 不变性
+
+结构体的状态在其生命周期内不会随时间改变。换句话说，一旦创建了一个结构体，该特定结构体的表现形式在其存在期间将保持不变.
+
+- 首先，由于结构体不发生变化，我们可以安全地将数据传递给函数，并确信无论发生什么，传递给函数的副本都将保持完整。
+- 其次，不变结构体使得编写正确的并发代码变得更加容易。因为结构体的状态不能被任何调用它的函数更改，我们可以安全地并行执行，并使用相同的结构体作为输入数据调用多个函数。
+- 第三，这使我们的代码更容易推理。在每一步，结构体的状态都更加可预测。
+
+### 数据层的不变性
+
+不变性是一个强大的概念，可以应用于我们编写的程序中，同时它也体现在我们存储的数据上。如果我们编写处理极度敏感数据（如电子健康记录 EHR）的软件，我们可能希望这些数据是不可变的。也就是说，每当 EHR 中的某些信息发生变化时，我们都希望这个变化能够完全追溯。
+
+### 在 Go 中如何编写不变代码
+
+在 Go 中编写不可变代码时，我们重点关注的是如何在代码中实现结构体的不可变性。核心在于理解 Go 如何使用指针，以及值传递与引用传递之间的区别。
+
+通常，我们逐渐习惯于要更新结构体内部状态时，在函数中需要使用指针：
+
+```go
+func main() {
+    p := Person{
+        name: "Benny",
+        age:  55,
+    }
+    setName(&p, "Bjorn")
+    fmt.Println(p.name)
+}
+
+func setName(p *Person, name string) {
+    p.name = name
+}
+```
+
+一般而言，我们希望保持代码的不可变性，因此应避免在代码中使用指针。那么，如何更新我们的结构体呢？setName 函数提供了对系统有用的机能。尽管我们不能改变所使用的对象状态，但我们仍然可以自由创建和销毁它们。解决方案是创建一个新的对象，它拥有原始对象的所有属性，但根据需要做了些修改。继续之前的例子，我们重构 setName 函数以实现期望的功能：
+
+```go
+func main() {
+    p := Person{
+        name: "Benny",
+        age:  55,
+    }
+    p = setName(p, "Bjorn")
+    fmt.Println(p.name)
+}
+
+func setName(p Person, name string) Person {
+    p.name = name
+    return p
+}
+```
+
+### 编写集合数据类型的不可变代码
+
+先前我们看到将函数从不可变转换为可变是多么简单，只需将接受指针的函数替换为接受值并返回新值的函数即可。但在处理 Map 这样的集合数据类型时情况就有所不同了，如下例所示：
+
+```go
+func main() {
+    m := map[string]int{}
+    addValue(m, "red", 10)
+    fmt.Printf("%v\n", m)
+}
+func addValue(m map[string]int, colour string, value int) {
+    m[colour] = value
+}
+```
+
+这段代码的输出是 map[red:10]。尽管在 addValue 函数中没有使用指针，但该函数并不是在操作 Map 的副本，而是在直接操作 Map 本身。在 Go 中，Map 总是像引用传递一样工作。
+
+如果我们尝试用另一种集合数据类型——切片来做类似的设置，效果则如预期：
+
+```go
+func main() {
+    names := []string{"Miranda"}
+    addValue(names, "Yvonne")
+    fmt.Printf("%v\n", names)
+}
+func addValue(s []string, name string) {
+    s = append(s, name)
+}
+```
+
+这里的输出是 ["Miranda"]。使用指针，我们再次可以使函数变为可变：
+
+```go
+func main() {
+    names := []string{"Miranda"}
+    addValue(&names, "Yvonne")
+    fmt.Printf("%v\n", names)
+}
+func addValue(s *[]string, name string) {
+    *s = append(*s, name)
+}
+```
+
+### 可变与不可变代码的性能衡量
+
+关于不可变代码的一个常见抱怨是，它比可变代码性能更低。即使不深入 Go 运行时的性能特性，这似乎也是一个合理的说法。毕竟，在不可变变体中，每次函数调用都会生成对象的新副本。但实际上，这些性能差异往往可以忽略不计。
+
+即便存在显著的性能影响，你也需要考虑这些性能牺牲在你的上下文中是否有意义。作为交换，你获得了线程安全、易于维护、理解和测试的代码。
+
+作为工程师，我们常常非常渴望找到最优化的解决方案，尽可能减少内存和 CPU 时间的使用。然而，对于许多真实世界的应用程序来说，性能影响小到最终用户根本不会注意到。而对于维护你代码的其他工程师来说，他们往往更希望代码易于理解而非速度更快。
+
+### 测量可变与不可变代码的性能
+
+```go
+// 不可变版本的创建Person函数
+func immutableCreatePerson() Person {
+    p := Person{}
+    p = immutableSetName(p, "Sean")
+    p = immutableSetAge(p, 29)
+    return p
+}
+
+// 设置名字的不可变函数
+func immutableSetName(p Person, name string) Person {
+    p.name = name
+    return p
+}
+
+// 设置年龄的不可变函数
+func immutableSetAge(p Person, age int) Person {
+    p.age = age
+    return p
+}
+
+// 可变版本的创建Person函数
+func mutableCreatePerson() *Person {
+    p := &Person{}
+    mutableSetName(p, "Tom")
+    mutableSetAge(p, 31)
+    return p
+}
+
+// 设置名字的可变函数
+func mutableSetName(p *Person, name string) {
+    p.name = name
+}
+
+// 设置年龄的可变函数
+func mutableSetAge(p *Person, age int) {
+    p.age = age
+}
+
+// 接受指针的函数
+func mutableSetName(p *Person, name string)
+
+// 绑定到对象的方法
+func (p *Person) mutableSetName(name string)
+
+
+package pkg
+
+import "testing"
+
+func BenchmarkImmutablePerson(b *testing.B) {
+    for n := 0; n < b.N; n++ {
+        immutableCreatePerson()
+    }
+}
+
+func BenchmarkMutablePerson(b *testing.B) {
+    for n := 0; n < b.N; n++ {
+        mutableCreatePerson()
+    }
+}
+
+```
+
+使用内置的基准测试支持，我们可以用以下命令运行基准测试：
+
+```bash
+go test -bench=.
+```
+
+在 Amazon Web Service (AWS) EC2 实例上，经过几次运行平均后，得到以下结果：
+
+```go
+BenchmarkImmutablePerson 0.3758 ns/op
+BenchmarkMutablePerson 0.3775 ns/op
+```
+
+### 何时编写可变函数
+
+性能影响通常可以忽略，但并非总是如此。如果你使用的结构体包含大量数据，将这些数据复制到每个函数中可能会严重影响性能，以至于拖垮你的应用程序。了解是否真是这种情况的唯一真正方法是为你的应用添加性能指标。即便如此，也必须在性能更高的代码和更易于维护的代码之间做出权衡。通常情况下，试图从你的应用中榨取更多性能会损害长期的可维护性。
+
+编写使用指针的可变代码的另一个可能原因是应用程序中需要唯一资源。如果你在代码中实现了传统的面向对象模式，你可能已经实现了单例模式。如果你想拥有一个真正的单例，你应该使用指针而不是复制单例。否则，你会在不同的函数中拥有单例的多个副本，可能每个副本的状态都不同。
+
+### 函子
+
+函子是一个可以对数据结构中包含的每个元素应用操作的函数。在 Haskell 中，这个函数的实现被称为 fmap。在 Go 中，这个函数可能看起来像这样：
+
+```go
+func fmap[A, B any](mapFunc func(A) B, sliceA []A) []B {
+    sliceB := make([]B, len(sliceA))
+    for i, a := range sliceA {
+        sliceB[i] = mapFunc(a)
+    }
+    return sliceB
+}
+```
+
+这段 Go 语言代码定义了一个名为`fmap`的泛型函数，它接受一个函数和一个切片作为参数，并返回一个新的切片。这个函数非常有用，因为它演示了如何在 Go 中实现类似函数式编程中的映射（map）操作，对原切片中的每个元素应用给定的转换函数。下面是对该函数的详细解析：
+
+### 函数签名
+
+```go
+func fmap[A, B any](mapFunc func(A) B, sliceA []A) []B
+```
+
+- `A, B any`: 这表示`A`和`B`是可以代表任何类型（只要这些类型支持所需的操作）的类型参数，使用`any`关键字（在 Go 1.18 及以后版本中引入）来指定。这使得`fmap`成为一个泛型函数，可以处理不同类型的输入和输出。
+- `mapFunc func(A) B`: 这是一个函数类型参数，它接受一个类型为`A`的值并返回一个类型为`B`的值。这是转换每个元素所使用的函数。
+
+- `sliceA []A`: 这是一个切片参数，包含了待转换的元素，元素类型为`A`。
+
+- `[]B`: 函数返回一个新的切片，其中的元素类型为`B`，这是转换后元素的类型。
+
+### 函数体
+
+```go
+sliceB := make([]B, len(sliceA))
+```
+
+首先，创建一个新的切片`sliceB`，其长度与`sliceA`相同，元素类型为`B`。这里使用`make`函数预先分配了足够的内存以存储转换后的结果。
+
+```go
+for i, a := range sliceA {
+    sliceB[i] = mapFunc(a)
+}
+```
+
+通过一个`for`循环遍历`sliceA`中的每个元素。在每次迭代中：
+
+- `i`是当前元素的索引，
+- `a`是当前元素的值（类型为`A`）。
+  然后，将`mapFunc`应用到`a`上，得到转换后的新值（类型为`B`），并将这个新值赋给`sliceB`中相应位置的元素。
+
+### 返回值
+
+```go
+return sliceB
+```
+
+循环结束后，函数返回新的切片`sliceB`，其中包含了所有经过`mapFunc`转换后的元素。
+
+### 应用场景
+
+这个`fmap`函数非常灵活，可以用于各种数据转换场景，比如将一个整数切片转换为对应的字符串切片（每个整数转换为其字符串形式），或者对一个用户定义的数据结构列表应用某种处理逻辑等。它体现了函数式编程中的“映射”概念，使得代码更加简洁、可读性强，并且易于复用。

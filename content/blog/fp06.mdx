@@ -1,0 +1,536 @@
+---
+title: Three Common Categories of Functions
+description: Three Common Categories of Functions
+date: 2024-05-12
+tags: ["code", "rehype pretty", "mdx"]
+published: true
+---
+
+### 基于谓词的函数
+
+我们探索的第一种函数类型是基于谓词的函数。作为一种类型别名，我们定义了谓词函数的类型签名：
+
+```go
+type Predicate[A any] func(A) bool
+```
+
+首个利用谓词工作的函数是简单的 Filter 函数，它用于根据提供的谓词从集合中筛选元素。
+
+### 实现一个过滤函数
+
+我们假定我们有一个数字切片，并希望过滤出所有大于 10 的数字。我们可以这样编写：
+
+```go
+func Filter(numbers []int) []int {
+    out := []int{}
+    for _, num := range numbers {
+        if num > 10 {
+            out = append(out, num)
+        }
+    }
+    return out
+}
+```
+
+可以通过增加一个输入参数来调整阈值，使这个函数更灵活一些。做一点简单的修改，我们得到以下函数：
+
+```go
+func Filter(numbers []int, threshold int) []int {
+    out := []int{}
+    for _, num := range numbers {
+        if num > threshold {
+            out = append(out, num)
+        }
+    }
+    return out
+}
+```
+
+需求常常变化，用户几乎无止境地需要现有系统的新功能。下一个对我们的函数的要求是，根据需要过滤出大于某个值或在某些情况下小于某个值的数字。思考片刻后，你可能会意识到这可以通过创建两个函数来实现
+
+```go
+func FilterLargerThan(numbers []int, threshold int) []int { ... }
+func FilterSmallerThan(numbers []int, threshold int) []int { ... }
+```
+
+Filter 函数的基本实现相当直接：它遍历一个容器（如切片），并对其中的每个数据元素应用谓词函数。如果谓词函数返回 true，我们就将该数据元素追加到输出中；否则，我们简单地丢弃未匹配的元素。
+
+```go
+func Filter[A any](input []A, pred Predicate[A]) []A {
+    output := []A{}
+    for _, element := range input {
+        if pred(element) {
+            output = append(output, element)
+        }
+    }
+    return output
+}
+```
+
+Filter 函数并不关心它处理的数据类型是什么。任何可以存储在切片中的数据都可以传递给 Filter 函数。
+
+```go
+func main() {
+    input := []int{1, 1, 3, 5, 8, 13, 21, 34, 55}
+    larger20 := Filter(input, func(i int) bool { return i > 20 })
+    smaller20 := Filter(input, func(i int) bool { return i < 20 })
+    fmt.Printf("%v\n%v\n", larger20, smaller20)
+}
+```
+
+让我们看看这个函数如何与我们在前几章中使用的 Dog 结构体一起工作。
+
+```go
+type Dog struct {
+    Name   Name
+    Breed  Breed
+    Gender Gender
+}
+```
+
+```go
+func main() {
+    dogs := []Dog{
+        {Name: "Bucky", Breed: Havanese, Gender: Male},
+        {Name: "Tipsy", Breed: Poodle, Gender: Female},
+    }
+    result := Filter(dogs, func(d Dog) bool { return d.Breed == Havanese })
+    fmt.Printf("%v\n", result)
+}
+```
+
+### any 或 all
+
+检查某些元素或所有元素是否满足特定条件是很常见的需求。将这个抽象为高阶函数的理由与 Filter 函数相同。如果不进行抽象，针对每个用例都需要单独实现 All 和 Any 函数。
+
+虽然在多范式或面向对象语言中不那么常见，但在纯函数式语言中，这两个函数依然存在并非常有用。
+
+### 寻找匹配项
+
+```go
+func main() {
+    input := []int{1, 1, 3, 5, 8, 13, 21, 34, 55}
+    filtered := Filter(input, func(i int) bool { return i == 55 })
+    contains55 := len(filtered) > 0
+    fmt.Printf("%v\n", contains55)
+}
+```
+
+这个实现有一个主要缺陷。如果列表中有 1000 万个元素怎么办？Filter 函数会遍历列表中的每一个元素。它的运行时间复杂度始终是线性的，即 O(n)。尽管我们的 Any 函数在最坏的情况下仍然是 O(n)，但实际上它可以更高效。
+
+尽管理论上的最坏时间复杂度为线性，但提高性能的最简单方法是在遍历切片时，一旦发现匹配项就立即返回 true。如果找到了匹配，则返回 true。否则，在函数结束时返回 false：
+
+```go
+func Any[A any](input []A, pred Predicate[A]) bool {
+    for _, element := range input {
+        if pred(element) {
+            return true
+        }
+    }
+    return false
+}
+```
+
+实现 All 匹配与 Any 匹配相似，同样具有抽象 if 语句实现的好处。All 的实现也具有类似的实用性优势：一旦遇到不匹配的元素，立即返回 false。否则，在函数结束时返回 true：
+
+```
+func All[A any](input []A, pred Predicate[A]) bool {
+    for _, element := range input {
+        if !pred(element) {
+            return false
+        }
+    }
+    return true
+}
+```
+
+### 实现 DropWhile 和 TakeWhile
+
+接下来的两个实现仍然是基于谓词的，但它们不返回单一的真或假作为输出，而是用来操作切片。从这个意义上说，它们更接近最初的 Filter 实现，但不同之处在于它们截断的是列表的开头或尾部。
+
+### TakeWhile 的实现
+
+```go
+func TakeWhile[A any](input []A, pred Predicate[A]) []A {
+    out := []A{}
+    for _, element := range input {
+        if pred(element) {
+            out = append(out, element)
+        } else {
+            return out
+        }
+    }
+    return out
+}
+```
+
+我们用一个包含连续数字的简单切片来演示这一点。我们的谓词将寻找奇数。因此，只要数字是奇数，它们就会被追加到输出切片中，但一旦遇到偶数，目前为止收集到的内容就会被返回：
+
+```go
+func main() {
+    ints := []int{1, 1, 2, 3, 5, 8, 13}
+    result := TakeWhile(ints, func(i int) bool {
+        return i % 2 != 0
+    })
+    fmt.Printf("%v\n", result)
+}
+```
+
+在这个例子中，输出是 [1 1]。请注意，这与单纯的 Filter 函数不同——如果将相同的谓词给予 Filter 函数，输出将会是 [1 1 3 5 13]，因为 Filter 会保留所有满足条件的元素，而不管它们在原切片中的位置。
+
+### 实现 DropWhile
+
+实现 DropWhile 是 TakeWhile 的对应面。此函数只要满足某个条件，就会丢弃元素。因此，从首次谓词测试失败的元素开始，直到列表末尾的元素都会被返回：
+
+```go
+func DropWhile[A any](input []A, pred Predicate[A]) []A {
+    out := []A{}
+    drop := true
+    for _, element := range input {
+        if !pred(element) {
+            drop = false
+        }
+        if !drop {
+            out = append(out, element)
+        }
+    }
+    return out
+}
+```
+
+```go
+func main() {
+    ints := []int{1, 1, 2, 3, 5, 8, 13}
+    result := DropWhile(ints, func(i int) bool {
+        return i % 2 != 0
+    })
+    fmt.Printf("%v\n", result)
+}
+```
+
+这个函数的输出是 [2 3 5 8 13]。因此，唯一被丢弃的元素是 [1 1]。如果你结合 TakeWhile 和 DropWhile 的输出，给定相同的谓词，你可以重新构建输入切片。
+
+### 映射/转换函数
+
+### 保持数据类型的同时进行转换
+
+我们首先要看的第一个转换函数是数据类型保持不变的情况。每当程序员遇到这个函数时，可以确信调用该函数后的数据类型与传入函数的数据类型相同。
+
+```go
+type MapFunc[A any] func(A) A
+func Map[A any](input []A, m MapFunc[A]) []A {
+    output := make([]A, len(input))
+    for i, element := range input {
+        output[i] = m(element)
+    }
+    return output
+}
+```
+
+在这个示例中，我们的泛型类型签名告诉我们调用 MapFunc 时数据类型是保持的：
+
+```go
+type MapFunc[A any] func(A) A
+```
+
+将切片中的每个元素乘以 2：
+
+```go
+func main() {
+    ints := []int{1, 1, 2, 3, 5, 8, 13}
+    result := Map(ints, func(i int) int {
+        return i * 2
+    })
+    fmt.Printf("%v\n", result)
+}
+```
+
+对狗列表中每只狗的名字应用一个转换。如果狗的性别是雄性，我们就在名字前加上"Mr."，如果是雌性，则加上"Mrs."：
+
+```go
+func dogMapDemo() {
+    dogs := []Dog{
+        {"Bucky", Havanese, Male},
+        {"Tipsy", Poodle, Female},
+    }
+    result := Map(dogs, func(d Dog) Dog {
+        if d.Gender == Male {
+            d.Name = "Mr. " + d.Name
+        } else {
+            d.Name = "Mrs. " + d.Name
+        }
+        return d
+    })
+    fmt.Printf("%v\n", result)
+}
+
+```
+
+运行这段代码会产生如下输出：
+
+```go
+[{Mr. Bucky 1 0} {Mrs. Tipsy 3 1}]
+```
+
+重要的是要强调，这些更改是针对数据副本进行的，而不是对原始 Dog 对象。
+
+### 从一到多的转换
+
+Map 函数的一个变体是 Flatmap 函数。这个函数会将单个元素映射为多个结果，然后将这些结果折叠回成一个单一的列表。将二维列表压缩成一维列表称为列表扁平化，因此得名 Flatmap。
+
+对于切片中的每个元素，我们将调用转换函数，该函数将我们的单个元素转换为元素的切片。我们不会将其暂时存储为切片的切片，而是立即展开每个切片，并将各个元素连续地存储在内存中：
+
+```go
+func FlatMap[A any](input []A, m func(A) []A) []A {
+    output := []A{}
+    for _, element := range input {
+        newElements := m(element)
+        output = append(output, newElements...)
+    }
+    return output
+}
+```
+
+对于切片中的每个整数 N，我们将它变成从 0 到 N 的所有整数的切片，最后将这个结果作为一个连续的切片返回：
+
+```go
+func main() {
+    ints := []int{1, 2, 3}
+    result := FlatMap(ints, func(n int) []int {
+        out := []int{}
+        for i := 0; i < n; i++ {
+            out = append(out, i)
+        }
+        return out
+    })
+    fmt.Printf("%v\n", result)
+}
+```
+
+运行这段代码的输出如下：
+
+```go
+[0 0 1 0 1 2]
+```
+
+对于输入切片中的每个元素，中间输出看起来像这样：
+0: [0]
+1: [0 1]
+2: [0 1 2]
+
+### 数据归约函数
+
+我们将要了解的最后一组函数是归约函数。这些函数对容器中的元素应用一个操作，并从中导出单个值。结合本章前面看到的函数，我们可以组成我们应用的大部分功能。
+
+这个高阶函数抽象了对列表中两个数据元素的操作，然后重复这个操作，累积结果，直到得到单一答案。与 Filter 和 Map 函数一样，这些函数是纯函数，因此实际的输入数据永远不会改变。
+
+该算法中抽象的函数是一个接受两个相同数据类型值并返回该类型单个值的函数。通过在这些值上执行某种操作来获得结果，该操作由函数的调用者提供：
+
+```go
+type reduceFunc[A any] func(a1, a2 A) A
+```
+
+```go
+func Reduce[A any](input []A, reducer reduceFunc[A]) A {
+    if len(input) == 0 {
+        // 返回默认零值
+        return *new(A)
+    }
+    result := input[0]
+    for _, element := range input[1:] {
+        result = reducer(result, element)
+    }
+    return result
+}
+```
+
+们还处理了边缘情况。如果得到的是一个空切片，我们返回传给函数的类型的默认零值。如果切片中只有一个项目，则无法执行任何操作，我们只是返回该值（通过不执行循环并根据 input[0]立即返回结果）。
+
+一个可能的归约器是求和归约器，它将两个数字相加并返回结果。以下匿名函数就是这个函数的一个例子
+
+```go
+func(a1, a2 A) A { return a1 + a2 }
+```
+
+Reduce 函数是泛型的，可以接受任何类型作为输入，但+运算符并不是为所有数据类型定义的。为了解决这个问题，我们可以创建一个内部调用 reducer 的 Sum 函数，但将类型签名收紧为仅允许数字作为输入。
+
+由于 Go 中有多种数字数据类型，我们希望 Sum 函数能够用于所有这些类型。这可以通过为泛型函数创建一个自定义类型约束来实现。我们还将考虑将 Number 作为有效类型别名—这可以通过在每个类型前添加~前缀来实现：
+
+```go
+type Number interface {
+    ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uint |
+    ~int8 | ~int16 | ~int32 | ~int64 | ~int |
+    ~float32 | ~float64
+}
+```
+
+接下来，我们可以在如 Sum 函数这样的泛型函数中使用这个类型作为类型约束：
+
+```go
+func Sum[A Number](input []A) A {
+    return Reduce(input, func(a1, a2 A) A { return a1 + a2 })
+}
+```
+
+我们可以使用这个函数返回数字切片的总和
+
+```
+func main() {
+    ints := []int{1, 2, 3, 4}
+    result := Sum(ints)
+    fmt.Printf("%v\n", result)
+}
+```
+
+有了归约器，我们可以将这些操作抽象到列表中。添加一个类似的函数来执行每个元素的乘法与编写求和函数一样简单：
+
+```go
+func Product[A Number](input []A) A {
+    return Reduce(input, func(a1, a2 A) A { return a1 * a2 })
+}
+```
+
+在 Haskell 和其他函数式语言中，有一些开箱即用的不同归约器实现，它们各自对核心算法进行了轻微的调整。你会找到以下几种：
+
+- 从列表开始到结尾迭代的归约器
+- 从列表结尾到开始迭代的归约器
+- 不以列表的第一个元素而是以默认值开始的归约器
+- 以默认值开始，然后从列表结尾到开始迭代的归约器
+
+提供不同的起始值将使我们能够编写诸如将所有数字相乘，然后再乘以 2 的函数。我们可以通过对 Reducer 函数进行一些小修改来实现这一点：
+
+```go
+func ReduceWithStart[A any](input []A, startValue A, reducer reduceFunc[A]) A {
+    if len(input) == 0 {
+        return startValue
+    }
+    if len(input) == 1 {
+        return reducer(startValue, input[0])
+    }
+    result := reducer(startValue, input[0])
+    for _, element := range input[1:] {
+        result = reducer(result, element)
+    }
+    return result
+}
+```
+
+我们处理与原始 Reduce 函数类似的边缘情况，但一个关键的区别是，我们总是有一个默认值可以返回。当切片为空时，我们可以返回它，或者当切片恰好包含一个元素时，返回起始值与切片中第一个元素的组合。
+
+下一个示例代码中，我们将在每个单词之间用逗号连接字符串，但为了展示我们的新 ReduceWithStart 函数，我们将提供一个起始值"first"：
+
+```go
+func main() {
+    words := []string{"hello", "world", "universe"}
+    result := ReduceWithStart(words, "first", func(s1, s2 string) string {
+        return s1 + ", " + s2
+    })
+    fmt.Printf("%v\n", result)
+}
+```
+
+如果运行这段代码，我们会得到以下输出：
+
+```go
+first, hello, world, universe
+```
+
+### 示例 - 处理机场数据
+
+在开始使用我们创建的函数之前，我们需要做一些准备工作。首先，我们需要获取数据。
+
+```json
+{
+  "Airport": {
+    "Code": "字符串",
+    "Name": "字符串"
+  },
+  "Statistics": {
+    "Flights": {
+      "Cancelled": 数字,
+      "Delayed": 数字,
+      "On Time": 数字,
+      "Total": 数字
+    },
+    "Minutes Delayed": {
+      "Carrier": 数字,
+      "Late Aircraft": 数字,
+      "Security": 数字,
+      "Total": 数字,
+      "Weather": 数字
+    }
+  }
+}
+```
+
+为了处理这些数据，我们将在 Go 中根据.json 结构创建结构体。我们可以使用内置的.json 标签和反序列化器来将这些数据读取到内存中。我们用于处理这些数据的 Go 结构体如下所示：
+
+```go
+type Entry struct {
+    Airport struct {
+        Code  string `json:"Code"`
+        Name  string `json:"Name"`
+    } `json:"Airport"`
+    Statistics struct {
+        Flights struct {
+            Cancelled int `json:"Cancelled"`
+            Delayed   int `json:"Delayed"`
+            OnTime    int `json:"On Time"`
+            Total     int `json:"Total"`
+        } `json:"Flights"`
+        MinutesDelayed struct {
+            Carrier      int `json:"Carrier"`
+            LateAircraft int `json:"Late Aircraft"`
+            Security    int `json:"Security"`
+            Weather     int `json:"Weather"`
+        } `json:"Minutes Delayed"`
+    } `json:"Statistics"`
+}
+```
+
+编写代码来将这个文件读取到内存中作为条目：
+
+```go
+func getEntries() []Entry {
+    bytes, err := ioutil.ReadFile("./resources/airlines.json")
+    if err != nil {
+        panic(err)
+    }
+    var entries []Entry
+    err = json.Unmarshal(bytes, &entries)
+    if err != nil {
+        panic(err)
+    }
+    return entries
+}
+```
+
+问题陈述如下：编写一个函数，返回西雅图机场（机场代码：SEA）的总延误小时数。
+
+根据这个问题陈述，我们可以看到需要采取三个行动：
+
+- 按机场代码筛选数据为 SEA。
+- 将 MinutesDelayed 字段转换为小时。
+- 汇总所有小时数。
+
+```go
+func main() {
+    entries := getEntries()
+    SEA := Filter(entries, func(e Entry) bool {
+        return e.Airport.Code == "SEA"
+    })
+    WeatherDelayHours := FMap(SEA, func(e Entry) int {
+        return e.Statistics.MinutesDelayed.Weather / 60
+    })
+    totalWeatherDelay := Sum(WeatherDelayHours)
+    fmt.Printf("%v\n", totalWeatherDelay)
+}
+```
+
+每次调用函数时，我们都将结果存储在一个新的切片中。原始数据因此从未丢失，如果我们选择这样做，仍然可以将其用于函数的其他部分。
+
+### 总结
+
+在本章中，我们学习了三种有助于以函数式编程构建程序的函数类别。首先，我们了解了基于谓词的函数，这些函数可以将数据过滤成符合特定要求的子集，或者告诉我们数据集是否全部或部分满足某个条件。接着，我们学习了如何以函数式方式改变数据，包括保证数据类型保持不变的转换方法，以及同时改变数据类型本身的函数。
+
+最后，我们探讨了归约函数，这种函数能将一系列元素简化为单一值。我们通过机场数据示例展示了这三种类型函数如何结合使用。

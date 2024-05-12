@@ -1,0 +1,368 @@
+---
+title: Recursion
+description: Recursion
+date: 2024-05-12
+tags: ["code", "rehype pretty", "mdx"]
+published: true
+---
+
+### Recursion
+
+在本章中，我们将涵盖以下主要话题：
+
+- 递归的含义
+- 为何使用递归函数？
+- 何时及如何使用递归函数
+- 利用函数作为一等公民编写递归函数
+- 理解 Go 中递归函数的局限性
+- 理解尾递归与编译器优化
+
+### 函数式语言偏爱递归
+
+递归本质上比迭代解决方案更纯净。尽管可以用递归形式表达的每个程序也可以用迭代形式表达，迭代解决方案需要维护的状态比递归解决方案更多。
+
+我们的简单阶乘示例在写出迭代实现时突显了这一点：
+
+```go
+func factorial(n int) int {
+    result := 1
+    for i := 1; i <= n; i++ {
+        result = result * i
+    }
+    return result
+}
+```
+
+纯递归示例从不改变状态。它不是通过改变状态，而是通过将输入参数与函数调用的输出组合来返回新值：
+
+```go
+return input * Fact(input-1)
+```
+
+作为一般规则，递归允许我们创建带有复制状态的新函数，对副本进行更改，并返回结果，所有这些都不在递归调用本身中改变值。这意味着对程序状态的更改被包含在每个堆栈帧内。
+
+### Go 中的递归状态变更
+
+在 Go 和其他非纯语言中，有可能在递归函数调用中变更状态。在这种语言中，递归并不能保证状态的不可变性，但它确实使编写不可变实现变得更加容易。
+
+### 何时使用递归函数
+
+任何可以迭代实现的功能也可以递归实现。
+Go 中每个含有 for 语句的函数都可以被替换为等效的函数，该函数使用递归函数调用来替代 for 循环。
+递归函数的两个主要缺点是它们通常具有更大的时间和空间需求。多次调用函数会产生多个堆栈帧。这些堆栈帧占用了程序的工作内存的一部分。通常，每个帧会包含来自其下方帧的数据副本（在递归函数中），这意味着在前面的阶乘示例中，每次函数调用都使用与其前一个函数相似的内存量。然而，所有这些堆栈帧在某个时刻都同时存在。递归调用堆栈直到完成最终的递归调用才会弹出堆栈。因此，在图 7.1 中，我们可以看到所有堆栈都叠加在一起，然后从上到下（后进先出，LIFO）进行评估。如果我们以迭代方式编写相同的函数，调用堆栈上只会有一个函数。
+递归函数的第二个局限性是它们通常比迭代版本慢。这主要是因为就编程语言特性而言，函数调用是昂贵的操作。鉴于我们刚刚了解到的关于调用堆栈的知识，这是有道理的。每次函数调用都必须将内存复制到新位置，执行核心算法，然后再次复制所有内容以便进行下一次递归调用。
+尽管这些局限性很重要，但我们的主要目标是实现代码的可读性和可维护性。一旦掌握了递归，不仅可以使程序更容易编写，而且也更容易理解。
+本书的一个总体主题是我们将为了你——程序员的便利，以及后来的代码阅读者的方便，牺牲性能。
+
+### （二叉）树的例子
+
+```go
+type node struct {
+    value int
+    left  *node
+    right *node
+}
+```
+
+```go
+var ExampleTree = &node{
+    value: 1,
+    left: &node{
+        value: 2,
+        left: &node{
+            value: 3,
+        },
+        right: &node{
+            value: 4,
+        },
+    },
+    right: &node{
+        value: 5,
+    },
+}
+```
+
+### 使用 for 循环迭代解决树问题
+
+```go
+func sumIterative(root *node) int {
+    queue := make(chan *node, 10)
+    queue <- root
+    var sum int
+    for {
+        select {
+        case node := <-queue:
+            sum += node.value
+            if node.left != nil {
+                queue <- node.left
+            }
+            if node.right != nil {
+                queue <- node.right
+            }
+        default:
+            return sum
+        }
+    }
+}
+```
+
+### 递归解决树问题
+
+```go
+func sumRecursive(node *node) int {
+    if node == nil {
+        return 0
+    }
+    return node.value + sumRecursive(node.left) + sumRecursive(node.right)
+}
+```
+
+### 递归与函数作为一等公民
+
+学习如何利用函数式和多范式语言中的一些概念，使递归编写和管理更加容易。
+
+使用与前一个示例相同的树，编写一个函数来查找树中的最大节点值。
+
+实现这一目标的一个选项是在递归函数之外的全局变量中跟踪状态。这种方法虽然可行，但比较混乱。
+
+下面的代码遍历树并使用全局变量来跟踪遇到的最大值：
+
+```go
+var maximum = 0
+func MaxGlobalVariable(node *node) {
+    if node == nil {
+        return
+    }
+    if node.value > maximum {
+        maximum = node.value
+    }
+    MaxGlobalVariable(node.left)
+    MaxGlobalVariable(node.right)
+}
+func main() {
+    maximum = math.MinInt
+    MaxGlobalVariable(ExampleTree)
+    fmt.Println(maximum)
+}
+```
+
+另一个更好的方法是在每个递归调用中跟踪当前最大值。这是通过扩展函数签名来实现的，使其包括我们正在跟踪的整数值，如以下代码所示：
+
+```go
+func maxInline(node *node, maxValue int) int {
+    if node == nil {
+        return maxValue
+    }
+    if node.value > maxValue {
+        maxValue = node.value
+    }
+    maxLeft := maxInline(node.left, maxValue)
+    maxRight := maxInline(node.right, maxValue)
+    if maxLeft > maxRight {
+        return maxLeft
+    }
+    return maxRight
+}
+```
+
+如果我们想要调用 maxInline 函数，我们的调用函数将看起来像这样：
+
+```go
+func main() {
+    fmt.Println(maxInline(ExampleTree, 0))
+}
+```
+
+在对 maxInline 的函数调用中，我们实际上向调用者泄露了实现细节。调用者必须向我们的递归函数传递初始起始值。这相当混乱，对于更复杂的函数，我们不能指望调用者知道适当的值是什么。
+
+传统的面向对象语言通过公开一个不递归的函数来解决这个问题，该函数会携带状态附加地调用一个私有的递归函数。在 Go 中模拟这个模型，我们得到以下内容：
+
+```go
+func main() {
+    fmt.Println(MaxInline(ExampleTree))
+}
+func MaxInline(root *node) int {
+    return maxInline(root, 0)
+}
+```
+
+上述方法的主要问题是，你仍然在包私有空间中充斥着任何在包中工作的人都可以使用的函数。这可能是期望的行为，但并不总是。解决这个问题的一种方法是将递归函数封装在非递归函数内部。这样，我们可以在非递归函数内部跟踪状态，而内部递归函数可以访问这个状态。
+
+解决这个问题的一种方法是将递归函数封装在非递归函数内部。这样，我们可以在非递归函数内部跟踪状态，而内部递归函数可以访问这个状态。
+
+```go
+func Max(root *node) int {
+    currentMax := math.MinInt
+    var inner func(node *node)
+    inner = func(node *node) {
+        if node == nil {
+            return
+        }
+        if node.value > currentMax {
+            currentMax = node.value
+        }
+        inner(node.left)
+        inner(node.right)
+    }
+    inner(root)
+    return currentMax
+}
+```
+
+在本示例中，我们已经看到了如何使用函数作为一等公民帮助我们编写递归代码。但是这样做有性能上的影响。
+
+### 递归函数的限制
+
+递归函数在性能上有一定的代价。当创建递归函数调用时，我们会将状态从一个函数栈复制到下一个函数栈中。这涉及到将大量数据复制到工作内存中，并且还需要额外的计算开销来完成函数调用本身。
+
+另一个限制是递归解决方案通常比迭代解决方案慢。
+
+### 递归与迭代解决方案的性能测量
+
+使用本章开始时看到的阶乘问题的相同迭代和递归解法来进行演示：
+
+```go
+package pkg
+
+func IterativeFact(n int) int {
+    result := 1
+    for i := 2; i <= n; i++ {
+        result *= i
+    }
+    return result
+}
+
+func RecursiveFact(n int) int {
+    if n == 0 {
+        return 1
+    }
+    return n * RecursiveFact(n - 1)
+}
+```
+
+为了测试这两个函数，我们可以使用 Go 的基准测试功能.
+
+```go
+package pkg
+
+import "testing"
+
+func BenchmarkIterative100(b *testing.B) {
+    for n := 0; n < b.N; n++ {
+        IterativeFact(10)
+    }
+}
+
+func BenchmarkRecursive100(b *testing.B) {
+    for n := 0; n < b.N; n++ {
+        RecursiveFact(10)
+    }
+}
+```
+
+性能影响是明显的。多次运行的平均值如下：
+
+| Function  | ns/op |
+| --------- | ----- |
+| Iterative | 8.2   |
+| Recursive | 24.8  |
+
+如我们所见，迭代函数完成所需的时间大约是递归函数的 1/4。下图显示了不同输入值下每个函数的运行时间（ns/op）：
+
+![FP07性能测试](/fp/FP07性能测试.png)
+
+递归函数不仅通常比其迭代对应物慢，而且随着输入增大，它们的变慢速度也比迭代解决方案更为显著。
+
+### 递归函数的空间限制
+
+除了在典型场景下较慢之外，递归函数还存在另一个缺点：对递归函数的每次调用都会在栈上增加一个新的帧。当前迭代的所有数据都被复制并传递给新函数。回顾图 7.1，这些栈是以后进先出（LIFO）的方式堆叠在一起的。一旦我们的栈不能再增长，程序就会停止。好消息是在 Go 中，这个限制相对较大，可能不会立即引起实际问题。在现代 64 位机器上，这个栈可以容纳高达 1GB 的数据，而在 32 位机器上，限制是 250MB。
+
+实践中，这个限制最终会被触及。让我们看以下示例：
+
+```go
+func main() {
+    infiniteCount(0)
+}
+
+func infiniteCount(i int) {
+    if i%1000 == 0 {
+        fmt.Println(i)
+    }
+    infiniteCount(i + 1)
+}
+```
+
+如果在 32 位机器上运行此函数，输出的尾部会类似于这样：
+
+```go
+1861000
+1862000
+1863000
+1864000
+runtime: goroutine stack exceeds 262144000-byte limit
+runtime: sp=0xc008080380 stack=[0xc008080000, 0xc010080000]
+fatal error: stack overflow
+```
+
+因此，在大约 180 万次迭代后，程序会崩溃。实际限制取决于每个栈帧的大小。对于更复杂且管理更多内部状态的递归函数，这个限制会更低。但我们能做些什么来避免达到这个限制呢？在 Go 中，处理递归函数时无法完全避免这个限制。但是，我们可以调整这个限制（尽管在 64 位机器上的 1GB 限制应该是足够的）。
+
+要更改限制，我们可以使用 debug.SetMaxStack(bytes)函数。为演示这一点，让我们将 32 位机器的限制调整为默认大小的两倍：
+
+```go
+func main() {
+    debug.SetMaxStack(262144000 * 2)
+    infiniteCount(0)
+}
+```
+
+### 尾递归作为栈限制的解决方案
+
+一些函数式语言采用的技术称为尾调用优化。即使是非函数式语言也可能提供这个特性——JavaScript 就是一个显著的例子。这是一种编译器（或解释器）优化，其中递归函数调用无需分配新的栈帧。回想一下，递归函数的主要缺点是可能会耗尽栈空间——因此，如果我们解决了这个问题，就可以实现无限递归。
+
+### 将递归函数改写为尾调用递归函数
+
+尾调用递归函数与普通递归函数的关键区别在于，尾调用变体中，每个栈帧都是相互独立的。为了展示这一点，让我们再次检查阶乘函数：
+
+```go
+func Fact(input int) int {
+    if input == 0 {
+        return 1
+    }
+    return input * Fact(input - 1)
+}
+```
+
+为此，我们将再次利用函数作为一等公民。我们将创建一个名为 tailCallFactorial 的非递归外部函数，它反过来调用一个名为 factorial 的内部递归函数。
+
+为了以递归方式编写这个函数并解除每个栈帧的关联，我们将做出两个改变。首先，我们将使用一个从 input 计数到 0 的计数器。这等同于 for i := n; i > 0; i-- 的循环。其次，我们也将持续累积每次乘法的结果。我们将通过在下一个栈帧的输入参数上执行乘法并传递乘积值来实现这一点：
+
+```go
+func tailCallFactorial(n int) int {
+    var factorial func(counter, result int) int
+    factorial = func(counter, result int) int {
+        if counter == 0 {
+            return result
+        }
+        return factorial(counter-1, result*counter)
+    }
+    return factorial(n, 1)
+}
+```
+
+使这个函数成为尾调用递归的关键代码行如下：
+
+```go
+return factorial(counter-1, result*counter)
+```
+
+通过这个简单的改变，每个栈帧都可以单独评估。一些编译器会检测到当前栈帧可以在调用下一个栈帧时立即释放。这是尾调用优化的高级概述，但请注意，截至撰写时，Go 并未执行此类编译器优化。
+
+### 总结
+
+在本章中，我们了解到递归为何是函数式编程语言中的关键组成部分。我们探讨了递归函数如何使强化函数纯度和不可变性变得更加容易。接着，我们看到了将函数视为一等公民如何能够简化对递归函数调用状态的管理。我们通过创建外部的非递归函数来实现这一点，这些函数利用内部的递归函数来进行计算。
+
+随后，我们审视了递归和迭代解决方案的性能问题。在这里，我们发现递归解决方案通常比迭代方案更慢，并且最终递归函数会因缺乏继续运算所需的内存而停止运行（尽管在 64 位机器上这种情况发生需要很长时间）。
+
+最后，我们探讨了尾调用优化（Tail-Call Optimization）和尾调用递归函数。尾调用优化是一种实用的编译器优化技术，许多语言如 Haskell 和 JavaScript 都支持它，以克服递归函数的局限性。至关重要的是，我们了解到 Go 语言当前并不支持尾调用优化，即便我们编写了尾调用递归函数。
+
+在下一章中，我们将探讨声明式和流畅编程。我们将利用递归来以延续传递风格（Continuation-Passing Style）编写程序。

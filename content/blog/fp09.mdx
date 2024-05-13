@@ -1,0 +1,325 @@
+---
+title: Functional Design Patterns
+description: Functional Design Patterns
+date: 2024-05-13
+tags: ["code", "rehype pretty", "mdx"]
+published: true
+---
+
+### 函数式设计模式
+
+本章将涵盖以下主要主题：
+面向经典范式的函数式设计模式：
+
+- 策略模式（The strategy pattern）
+- 装饰器模式（The decorator pattern）
+- 好莱坞原则（The Hollywood principle）
+  函数式设计模式
+
+### 策略模式
+
+策略模式是一种设计模式，允许我们在运行时动态改变方法或函数的算法。可以在程序运行期间修改其行为。
+
+我们将实现三种不同的密码机制：
+
+- 凯撒密码（Caesar cipher）
+- 阿特巴什密码（Atbash cipher）
+- 自定义密码
+  每个密码都需要支持对给定字符串进行加密和解密，遵循以下规则： 输入 = 解码(编码(输入))
+
+### 面向对象的策略模式
+
+此解决方案的架构：
+
+![FP08策略模式实现密码](/fp/FP09策略模式实现密码.png)
+
+首先，设置 CipherService 以及一个包含我们所支持的所有字母表字母的切片。同时，我们需要确定给定字符在这一字母切片中的索引，这将通过实现 indexOf 函数完成：
+
+```go
+var (
+    alphabet = [26]rune{'a', 'b', 'c', ..., 'z'}
+)
+
+func indexOf(r rune, rs [26]rune) (int, bool) {
+    // 查找r在rs中的索引
+}
+```
+
+定义 CipherService 结构体，它持有一个 CipherStrategy 策略：
+
+```
+type CipherService struct {
+    Strategy CipherStrategy
+}
+
+// 为CipherService附加Cipher和Decipher方法，这些方法将调用选定策略的实现
+func (c CipherService) Cipher(input string) string {
+    return c.Strategy.Cipher(input)
+}
+
+func (c CipherService) Decipher(input string) string {
+    return c.Strategy.Decipher(input)
+}
+```
+
+接下来，定义 CipherStrategy 接口，确保任何实现都包含 Cipher 和 Decipher 方法：
+
+```go
+type CipherStrategy interface {
+    Cipher(string) string
+    Decipher(string) string
+}
+```
+
+有了这些基础，我们可以开始实现支持的策略了。为了简洁，我们仅实现凯撒密码和阿特巴什密码
+
+```go
+type CaesarCipher struct {
+    Rotation int
+}
+```
+
+凯撒密码通过将输入字母替换成字母表中固定数量位置之后的字母来工作。这个位置数由密码的旋转量定义。接下来是凯撒密码的加密和解密方法的 Go 实现：
+
+```go
+func (c CaesarCipher) Cipher(input string) string {
+    // 加密逻辑...
+}
+
+func (c CaesarCipher) Decipher(input string) string {
+    // 解密逻辑...
+}
+```
+
+然后，实现阿特巴什密码。阿特巴什密码简单地将每个字母替换为字母表中相同位置但方向相反的字母。因此，不需要维护状态，只需定义一个空的结构体：
+
+```go
+type AtbashCipher struct{}
+
+func (a AtbashCipher) Cipher(input string) string {
+    // 加密逻辑...
+}
+
+func (a AtbashCipher) Decipher(input string) string {
+    // 注意，解密可以通过再次调用Cipher方法实现，因为阿特巴什是可逆的
+    return a.Cipher(input)
+}
+```
+
+在主函数中，可以动态地改变实现，比如在凯撒密码和阿特巴什密码之间切换：
+
+```go
+func main() {
+    svc := CipherService{}
+    svc.Strategy = CaesarCipher{Rotation: 10}
+    fmt.Println(svc.Cipher("helloworld"))
+
+    svc.Strategy = AtbashCipher{}
+    fmt.Println(svc.Cipher("helloworld"))
+}
+```
+
+### 函数式实现策略模式
+
+定义新的 CipherService 结构体以及类型别名定义加密和解密函数：
+
+```go
+type (
+    CipherFunc func(string) string
+    DecipherFunc func(string) string
+)
+
+type CipherService struct {
+    CipherFn   CipherFunc
+    DecipherFn DecipherFunc
+}
+```
+
+接下来，定义凯撒和阿特巴什相关的函数。在函数式编程中，不需要为这些定义新的结构体，直接定义函数即可。注意，凯撒密码的旋转量需要作为函数参数而非结构体字段。
+
+```go
+func CaesarCipher(input string, rotation int) string { /* 实现... */}
+func CaesarDecipher(input string, rotation int) string { /* 实现... */}
+
+func AtbashCipher(input string) string { /* 实现... */}
+// AtbashDecipher 可以直接指向 AtbashCipher，因为阿特巴什加密和解密是相同的操作
+var AtbashDecipher = AtbashCipher
+```
+
+在 Go 中使用这种函数式实现时，需要为 CipherService 的 Cipher 和 Decipher 提供函数类型为 func(string) string 的实现。由于凯撒密码需要额外的旋转变量，需要为 CipherService 创建闭包来传递这个值。在 main 函数中，我们可以动态更新使用的密码为阿特巴什密码，而无需闭包，因为阿特巴什密码直接符合预期的函数签名：
+
+```go
+func main() {
+    fpSvc := CipherService{
+        CipherFn: func(input string) string {
+            return CaesarCipher(input, 10)
+        },
+        DecipherFn: func(input string) string {
+            return CaesarDecipher(input, 10)
+        },
+    }
+
+    // 使用fpSvc加密和解密，以及动态切换到阿特巴什密码
+    // ...
+}
+```
+
+这样，我们就完成了基于函数式编程风格的策略模式实现，能够灵活地使用匿名函数或直接的函数引用指定加密和解密的具体逻辑，使代码更加简洁且易于扩展。
+
+### 装饰器模式
+
+装饰器模式是一种在不修改原有方法和类的前提下为其添加功能的方法。这意味着遵循了 SOLID 原则中的“开闭原则”。在面向对象编程中，这通常通过函数组合（以及在支持的语言中使用继承）来实现。在 Go 中，组合是构建结构体的首选方式，因此装饰器模式无论是对函数式还是面向对象风格的实现都显得很自然。
+
+### SOLID 面向对象设计原则
+
+SOLID 是一组设计健壮面向对象系统的原则，分别代表单一职责、开闭原则、里氏替换、接口隔离和依赖倒置。无论使用哪种编程范式，遵循这些原则都是有益的，但其实现方式各不相同。例如，函数应该有单一职责，对修改关闭而对扩展开放，函数应依赖抽象（高阶）函数而不是具体实现。
+
+### 面向对象装饰器模式的实现
+
+![FP09装饰器模式](/fp/FP09装饰器模式.png)
+
+创建一个在每次加密或解密调用前添加日志语句的函数，只需要创建一个高阶函数，该函数接受一个 Cipher 或 Decipher 函数作为输入，并返回一个新的函数，该新函数首先调用日志然后将剩余功能委托给底层函数。
+
+```go
+func LogCipher(cipher CipherFunc) CipherFunc {
+    return func(input string) string {
+        log.Printf("ciphering: %s\n", input)
+        return cipher(input)
+    }
+}
+
+func LogDecipher(decipher DecipherFunc) DecipherFunc {
+    return func(input string) string {
+        log.Printf("deciphering: %s\n", input)
+        return decipher(input)
+    }
+}
+```
+
+LogCipher 接受任何符合 CipherFunc 类型定义的函数，并返回一个新的同样符合该类型定义的函数。新函数作为一个从 LogCipher 返回的匿名函数，首先调用日志，然后调用最初传入的 CipherFunc。
+
+面向对象范式和函数式范式在实现策略上的主要区别仅在于我们如何定义对期望功能的遵守。面向对象方法中，我们使用接口来定义遵守性，而在函数式方法中，我们使用类型系统来定义遵守性。
+
+在我们的 main 函数中，我们可以通过装饰函数而非底层密码函数来创建 CipherService：
+
+```go
+func main() {
+    caesarCipher := func(input string) string {
+        return CaesarCipher(input, 10)
+    }
+    caesarDecipher := func(input string) string {
+        return CaesarDecipher(input, 10)
+    }
+    fpSvc := fp.CipherService{
+        CipherFn: LogCipher(caesarCipher),
+        DecipherFn: LogDecipher(caesarDecipher),
+    }
+    fmt.Println(fpSvc.Cipher("hello"))
+}
+```
+
+为了可读性，装饰函数被分离出来，但也可以像之前的策略模式实现一样内联进行。如果我们使用 AtbashCipher 创建 CipherService，会使示例更易读。
+
+### 好莱坞原则
+
+IoC 是对众所周知的依赖注入模式的一种抽象。依赖注入是编写面向对象应用程序的重要方面，对于函数式编程范式也同样有用。
+
+不深入到面向对象实现的细节，关键点在于对象应该将其依赖项的具体实现延迟到对象/调用层次结构的最高级别。在之前的示例中，我们通过利用接口而非具体实现，已经隐式地对密码实现执行了这一点
+面向对象的 CipherService 并没有指定它将使用哪个密码，而是通过仅请求 CipherStrategy 接口的实现，将该选择权推迟给了 CipherService 的创建者：
+
+```go
+type CipherStrategy interface {
+    Cipher(string) string
+    Decipher(string) string
+}
+
+type CipherService struct {
+    Strategy CipherStrategy
+}
+```
+
+Go 语言因其结构体没有显式的构造函数，自然而然地适合这种编程方式。在像 Java 这样的语言中，通过对象组合可以在类级别使用默认的对象实例化，更容易忽略针对抽象实现的编程。
+
+例如，下面的 Java 代码片段展示了一个不遵循 IoC 原则的 CipherService 实现，而是直接使用了特定类型的密码（在这种情况下是凯撒密码）：
+
+```java
+class CaesarCipher {
+    int rotation;
+    CaesarCipher(int rotation) {
+        this.rotation = rotation;
+    }
+}
+
+class CipherService {
+    CaesarCipher cipher = new CaesarCipher(); // 直接实例化，违反了IoC原则
+    CipherService() {}
+    public String cipher(String input) {
+        String result = "";
+        // 实现加密逻辑
+        return result;
+    }
+}
+```
+
+为何在此提及这段 Java 代码？首先，为了展示 Go 的结构体范式天然地通过无构造函数的结构体实例化支持 IoC，意味着结构体没有内在的类状态。
+
+这就带我们进入了服务的函数式实现。在 Go 中，我们有两种方式实现 IoC：
+
+- 第一种是通过使用接口，正如我们在面向对象示例中所做的。
+- 第二种是使用类型定义和将函数作为一等公民来抽象结构体的行为。
+
+为了说明区别，以下是两种我们使用过的 CipherService 定义，两者都根据其范式实现了 IoC。
+首先是面向对象的方式：
+
+```go
+type CipherStrategy interface {
+    Cipher(string) string
+    Decipher(string) string
+}
+
+type CipherService struct {
+    Strategy CipherStrategy
+}
+```
+
+接下来是函数式的方式：
+
+```go
+type (
+    CipherFunc func(string) string
+    DecipherFunc func(string) string
+)
+
+type CipherService struct {
+    CipherFn   CipherFunc
+    DecipherFn DecipherFunc
+}
+```
+
+### 函数式设计模式
+
+在本章的前几节中，我们比较了函数式与面向对象的设计模式（策略模式、装饰器模式及依赖注入/IoC）。观察函数式与面向对象设计模式的主要差异，可以清晰地看到，我们的模式是通过不同函数组合实现的。要么使用函数作为一等公民存储在结构体变量中，要么利用函数组合、高阶函数、匿名函数和闭包来实现传统上通过接口和类继承完成的目标。
+
+这确实是编写函数式代码时的主要要点。一切皆为函数。设计模式变成了函数组合的模式。
+
+当你考虑使用函数柯里化来组合不同的函数，将每个函数简化为一元函数，然后再将它们组合成任意多元函数时，这些步骤可以被视为一种函数式设计模式。类似地，通过闭包、单子、回调以及通过 CPS 使用都可以视为为了解决共同问题而应用的模式。在函数式编程中，我们没有面向对象设计模式所反映的对象分类学的开销。你可以说，在传统面向对象语言中对设计模式的需求更多是对编程语言本身的局限性的解决方案，而非对程序员的真实益处。
+
+避免传统设计模式的一种方式是通过使用函数组合，但同等重要的是利用类型系统——一个能够为指定签名的函数分配具体类型的类型系统。审视面向对象设计模式，无论是装饰器模式、工厂模式还是访问者模式，它们都大量利用接口来抽象实现细节。在 Go 中，我们可以像之前示例中那样，使用类型系统来进行抽象。
+
+如果总结在函数式范式中如何解决特定设计问题，可能会显得相当平淡，因为问题要么不存在，要么直接通过函数解决。我们的解决方案看起来就像下表所示：
+
+| 设计模式   | 解决方案                                                                   |
+| ---------- | -------------------------------------------------------------------------- |
+| 策略模式   | 函数（高阶函数 + 函数类型）                                                |
+| 装饰器模式 | 函数组合（闭包）                                                           |
+| 工厂模式   | 无需真正需要，因为我们不需要对象，但可以创建一组默认值的函数——即函数柯里化 |
+| 访问者模式 | 函数                                                                       |
+| 单例模式   | 无需，因为我们避免对象和可变状态                                           |
+| 适配器模式 | 可视为函数映射                                                             |
+| 门面模式   | 再次是函数                                                                 |
+
+在 Go 中，我们使用的是多范式语言，因此可以兼得两者的优点。在处理结构体时，我们可以利用一些设计模式，但它们的实现通过采用函数式编程原则而非面向对象原则，在许多方面得以简化。尽管我们可以通过创建接口来抽象结构体功能的实现，但同样可以使用符合特定类型的函数，正如我们在 CipherService 中所做的一样。
+
+### 总结
+
+本章中，我们探讨了面向对象代码中常见的设计模式，即策略模式、装饰器模式和好莱坞原则（IoC）。我们发现，通过将函数作为一等公民来利用，可以在 Go 中实现这些模式，无需复杂的对象分类。我们还讨论了函数式范式中设计模式的需求，并得出结论，要么这些模式不需要，要么可以通过函数来解决。在谈及用于解决常见问题的真正可重用的函数式代码时，我们提到了函数柯里化和函数组合的概念。在下一章中，我们将探讨如何利用函数式编程来实现并发代码。

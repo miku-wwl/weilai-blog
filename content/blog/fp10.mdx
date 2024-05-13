@@ -1,0 +1,522 @@
+---
+title: Concurrency and Functional Programming
+description: Concurrency and Functional Programming
+date: 2024-05-13
+tags: ["code", "rehype pretty", "mdx"]
+published: true
+---
+
+### 并发性和函数式编程
+
+本章涵盖以下主题：
+
+- 为什么函数式编程有助于我们编写并发代码
+- 如何创建并发函数（如 Filter、Map 等）
+- 如何使用管道模式并发地串联函数
+
+### 函数式编程与并发
+
+函数式编程背后的思路能帮助我们编写并发代码
+
+### 并发、并行与分布式计算
+
+首先明确一下我们所说的并发是什么意思：当程序能够同时执行多个任务时，就是并发。
+
+接下来是并行的概念。当我们说程序并行执行时，意味着多个核心同时执行任务。Go 语言中的通道和 goroutine 机制主要集中在并发而非并行上。
+
+分布式计算确实意味着将计算任务分散到多台机器上执行，从这个意义上说是并发的，但相比通常的并发或并行应用，它有更多开销。在分布式系统中，需要有容错机制（如果网络中的一个节点不可用怎么办？）和处理网络（不可靠或不安全的网络）的机制。因此，虽然人们可能将分布式计算作为并发的例子，但并发仅提供了最基础的要求。
+
+Go 是一种可用于编写分布式系统的语言。实际上，使用 goroutine 和通道可能会帮助你构建分布式系统所需的底层架构，但你需要的语言基本功能之外的更多东西。
+
+### 函数式编程与并发的优势
+
+本章我们将专注于并发，不会深入并行或分布式计算。这带来了一些明显的好处：
+
+- 更高的响应性：程序无需等待单一长时间运行的任务完成即可开始另一个任务。
+- 更高性能：如果我们能将繁重的工作负载分块并在多个线程上执行（Go 可能会跨多个核心调度这些以实现某种形式的并行性），这将减少完成操作所需的时间。
+
+### 函数式编程如何简化并发
+
+纯函数式编程为我们提供了一些关键特性，使得理解和执行并发更容易，代码出错概率更低。这些特性包括：
+
+- 不变的变量和状态
+- 纯函数（无副作用）
+- 引用透明性
+- 惰性求值
+- 可组合性
+
+### 不变的变量和状态
+
+在面向对象模型中，对象通常持有内部状态。如果允许这种状态变化，那么两个线程正在处理的状态可能会分歧。通过不允许状态改变，即使操作于同一数据源（或者说同一数据的副本），我们的函数也能独立执行而不干扰共享内存。
+
+### 纯函数
+
+如果我们的函数不依赖于程序状态，那么任何修改程序状态的东西都不会干扰我们的函数。
+
+除此之外，它还消除了另一类问题。如果我们的函数被允许改变状态或系统，操作顺序就会变得重要。
+
+### 引用透明性
+
+引用透明意味着我们可以将函数调用替换为其结果，而不会改变计算的结果。
+
+对于并发而言，重要的是如果我们的所有调用都是引用透明的，那么调用确切何时解决（提前或即时）就不重要了。这意味着当我们将代码切分为并发函数时，可以安全地以并发方式提前解析某些函数调用。
+
+### 惰性求值
+
+在编写并发代码时，惰性求值是一种常见方法。我们都熟悉的例子是回调的概念。这些是可以传递给异步调用的函数，但它们仅在变得相关时才会执行。一个函数完全有可能永远不会被调用。
+
+```go
+import (
+    "fmt"
+    "io/ioutil"
+    "net/http"
+)
+
+type ResponseFunc func(*http.Response)
+
+func getURL(url string, onSuccess, onFailure ResponseFunc) {
+    resp, err := http.Get(url)
+    if err != nil {
+        panic(err)
+    }
+    if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+        onSuccess(resp)
+    } else {
+        onFailure(resp)
+    }
+}
+```
+
+在上面的代码中，getURL 需要一个表示要解析的 URL 字符串，以及两个函数。这两个函数都具有相同的 ResponseFunc 类型，即签名 func(\*http.Response) 的函数。
+
+接下来，我们可以在 main 函数中调用 getURL 并提供两个回调：
+
+- 第一个回调 onSuccess，如果我们的 GET 请求返回 200 范围内的状态码，则执行；此函数将简单打印响应体的内容。
+- 第二个回调 onFailure，将简单打印错误消息以及响应收到的相应状态码。我们将两次调用 getURL，一次使用有效的 URL，一次使用无效的 URL。但是，我们不会同步地运行这段代码，而是通过在每个调用前加上 go 关键字，在单独的 goroutine 中调用 getURL。这意味着我们不知道哪个调用会先完成，但由于我们使用了惰性函数（一种延续传递风格编程），我们不必组织程序的控制流程。正确的回调会在其时机到来时执行，不必要的回调永远不会被评估，因此在不需要时我们避免了潜在的昂贵计算。
+
+```go
+func main() {
+    success := func(response *http.Response) {
+        fmt.Println("success")
+        content, err := ioutil.ReadAll(response.Body)
+        if err != nil {
+            panic(err)
+        }
+        fmt.Printf("%s\n", string(content))
+    }
+    failure := func(response *http.Response) {
+        fmt.Printf("something went wrong, received: %d\n", response.StatusCode)
+    }
+
+    go getURL("https://news.ycombinator.com", success, failure)
+    go getURL("https://news.ycombinator.com/ThisPageDoesNotExist", success, failure)
+
+    done := make(chan bool)
+    <-done // 保持main运行
+}
+```
+
+代码末尾有一个有趣的细节，我们创建了一个布尔类型的通道，然后从中读取但从未写入。这实质上使我们的应用程序保持活跃。
+
+### 线程与 goroutine
+
+- 虽然线程和 goroutine 这两个术语经常被互换使用，但它们是不同的。goroutine 是 Go 中的一个构造，用于实现任务的并发执行。它们由 Go 运行时管理，轻量级且启动和执行速度快，内置了通信媒介（通道）。
+- 另一方面，线程在硬件级别实现，由操作系统管理。它们启动较慢，没有内置的通信媒介，并且依赖于硬件。
+
+### 可组合性
+
+函数可以通过多种方式进行组合。这使我们能够定义应用程序的构建块，然后将它们链接起来解决具体问题。由于每个块相互独立，我们可以在它们之间构建并发层。
+
+我们将创建可以并发运行的函数式管道。
+
+### 创建并发函数
+
+大体上，本章我们将探讨两种类型的并发。我们可以称它们为内部并发和外部并发：
+
+- 内部并发指的是在每个函数内部实现并发。例如，在第六章中，我们看到了诸如 Filter、Map 和 FMap 等函数，它们易于实现并发执行。这将是本节的重点。值得注意的是，它们可以相互结合使用，使我们算法的多个步骤实现并发，并且我们甚至可以单独决定每个步骤所需的并发级别。
+- 外部并发则是关于利用 Go 的内置并发特性（如通道和 goroutine）来串联函数。这部分内容将在本章后面探讨。
+
+### 并发的 Filter 实现
+
+要实现并发有几个步骤：
+
+- 将输入分割成批次。
+- 启动一个过程来过滤每个批次。
+- 聚合每个批次的结果。
+- 返回聚合的输出。
+
+我们将利用 Go 的一些内置并发特性来实现这一点，首先想利用的就是通道和 goroutine。在我们最初的 Filter 函数中，我们遍历每个元素，如果它满足谓词就追加到输出切片中，最后返回输出切片。在这个版本中，我们将不再返回输出切片，而是将结果写入通道：
+
+```go
+type Predicate[A any] func(A) bool
+func Filter[A any](input []A, p Predicate[A], out chan []A) {
+    output := []A{}
+    for _, element := range input {
+        if p(element) {
+            output = append(output, element)
+        }
+    }
+    out <- output
+}
+```
+
+写入通道使我们能够在 Go 中以传统并发方式调用这个函数。然而，在那之前，我们必须围绕 Filter 建立一个包装函数，我们将称之为 ConcurrentFilter。这个函数做了几件事，包括允许我们配置批次大小。调整批次大小可以帮助我们微调性能以达到预期（如果批次太少，并发运行几乎没有好处；太多，管理 goroutine 带来的开销同样会减少我们的收益）。除了批处理输入外，我们还需要在 Filter 函数前缀以 go 关键字调用，以便启动一个新的 goroutine。最后，这个函数将读取我们启动的每个 goroutine 的结果，并将结果聚合到单个输出切片中：
+
+```
+func ConcurrentFilter[A any](input []A, p Predicate[A], batchSize int) []A {
+    output := []A{}
+    out := make(chan []A)
+    threadCount := int(math.Ceil(float64(len(input)) / float64(batchSize)))
+    fmt.Printf("goroutines: %d\n", threadCount)
+    for i := 0; i < threadCount; i++ {
+        fmt.Println("spun up thread")
+        if ((i + 1) * batchSize) < len(input) {
+            go Filter(input[i*batchSize:(i+1)*batchSize], p, out)
+        } else {
+            go Filter(input[i*batchSize:], p, out)
+        }
+    }
+    for i := 0; i < threadCount; i++ {
+        filtered := <-out
+        fmt.Printf("got data: %v\n", filtered)
+        output = append(output, filtered...)
+    }
+    close(out)
+    return output
+}
+```
+
+在上面的代码片段中，我们保留了打印语句以便观察运行时的情况。让我们创建一个简单的 main 函数，以这种方式过滤整数切片并查看相应的输出：
+
+```go
+func main() {
+    ints := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+    output := ConcurrentFilter(ints, func(i int) bool { return i%2 == 0 }, 3)
+    fmt.Printf("%v\n", output)
+}
+```
+
+运行这个函数给我们如下输出:
+
+```
+goroutines: 4
+spun up thread
+spun up thread
+spun up thread
+spun up thread
+got data: [10]
+got data: [2]
+got data: [4 6]
+got data: [8]
+[10 2 4 6 8]
+```
+
+从这个输出中，我们可以看到，为了以批次大小 3 处理我们的输入，需要启动 4 个 goroutines。这将我们的输入数据分片为以下段：
+
+- [1,2,3]
+- [4,5,6]
+- [7,8,9]
+- [10]
+
+### 并发的 Map 和 FMap 实现
+
+实现并发的 Map 和 FMap 函数需要与并发 Filter 实现相同的步骤，具体如下：
+
+- 将输入分割成批次。
+- 启动一个进程来处理每个批次。
+- 聚合每个批次的结果。
+- 返回聚合的输出。
+
+为了并发实现 Map 函数，我们首先重构在第六章创建的 Map 函数。同样，我们移除显式的返回，并将使用通道来传达每个元素映射的结果：
+
+```go
+type MapFunc[A any] func(A) A
+func Map[A any](input []A, m MapFunc[A], out chan []A) {
+    output := make([]A, len(input))
+    for i, element := range input {
+        output[i] = m(element)
+    }
+    out <- output
+}
+```
+
+我们将实现 ConcurrentMap 函数，像 ConcurrentFilter 实现那样对输出进行分批处理：
+
+```go
+func ConcurrentMap[A any](input []A, mapFn MapFunc[A], batchSize int) []A {
+    output := make([]A, 0, len(input))
+    out := make(chan []A)
+    threadCount := int(math.Ceil(float64(len(input)) / float64(batchSize)))
+    fmt.Printf("goroutines: %d\n", threadCount)
+    for i := 0; i < threadCount; i++ {
+        fmt.Println("spun up thread")
+        if ((i + 1) * batchSize) < len(input) {
+            go Map(input[i*batchSize:(i+1)*batchSize], mapFn, out)
+        } else {
+            go Map(input[i*batchSize:], mapFn, out)
+        }
+    }
+    for i := 0; i < threadCount; i++ {
+        mapped := <-out
+        fmt.Printf("got data: %v\n", mapped)
+        output = append(output, mapped...)
+    }
+    close(out)
+    return output
+}
+```
+
+请注意，ConcurrentFilter 和 ConcurrentMap 实现都需要将 batchSize 作为函数的输入传递。这意味着我们可以用不同数量的 goroutine 处理每个步骤，并单独调整每个函数。
+
+示例主函数
+
+```go
+func main() {
+    ints := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+    output := ConcurrentFilter(ints, func(i int) bool { return i%2 == 0 }, 3)
+    fmt.Printf("%v\n", output)
+    output = ConcurrentMap(output, func(i int) int { return i * 2 }, 2)
+    fmt.Printf("%v\n", output)
+}
+```
+
+在这个示例中，我们对过滤使用了大小为 3 的批次，但映射只使用了大小为 2 的批次。这个 main 函数的输出看起来像这样：
+
+```
+goroutines: 4
+spun up thread
+...
+[10 2 4 6 8]
+{接下来是映射函数的输出}
+goroutines: 3
+spun up thread
+...
+[16 20 4 8 12]
+```
+
+### 并发 FMap 实现
+
+这个实现与 Map 实现非常相似。主要区别在于我们的通道类型改变了。不再是整个函数签名都在操作同一类型 A，我们现在将有 A 和 B 的混合。这是一个较小的更改，并不影响实现细节，除了必须为通道创建正确的类型之外：
+
+```go
+func FMap[A, B any](input []A, m func(A) B, out chan []B) {
+    ...
+}
+
+func ConcurrentFMap[A, B any](input []A, fMapFn func(A) B, batchSize int) []B {
+    ...
+}
+```
+
+我希望这能说明，对于以纯粹函数风格编写的函数，创建并发实现是多么容易。Go 语言的一个限制使得这比在其他语言中稍微冗长一些。由于 Go 是严格的类型语言（这通常是一件好事），在使用高阶函数时，我们的函数签名需要完全匹配。否则，我们可以将函数的递归部分模板化，并为每个节点上的实际实现调用一个高阶函数。在伪代码中，我们会得到如下所示的内容：
+
+```go
+func ConcurrentRunner(input []Input, fn func(), batchSize int) []Output {
+    // 设置通道和批次逻辑
+    for batch in batches {
+        go Run(fn(batch))
+    }
+    // 收集输出并返回
+}
+```
+
+### 管道模式
+
+在本节中，我们将探讨管道模式，该模式允许我们利用 goroutines 和通道来串联函数调用。
+
+```
+我们应该有一种方式像花园软管那样耦合程序——当需要以另一种方式处理数据时，再拧上另一段。
+```
+
+使用管道串联函数
+创建管道的第一步是改变我们的函数如何接收和输出其输入。在本章的剩余部分，我们将主要关注两个函数，即 Filter 和 Map，但这可以扩展到任何其他函数。核心思想是使用通道进行输入和输出数据通信。首先，让我们看一下 Filter 函数，以及如何改变它以遵循我们的通道输入/通道输出方法。我们将新函数命名为 FilterNode。稍后我们将回到这种命名约定，但每个函数都可以被视为我们函数链中的一个节点。我们将不再接受切片作为输入，而是有一个通道作为输入，从中我们可以读取传入的数据。我们仍然会有预期的谓词，并且最后，我们也会返回一个通道，而不是数据切片：
+
+```go
+func FilterNode[A any](in <-chan A, predicate Predicate[A]) <-chan A {
+    out := make(chan A)
+    go func() {
+        for n := range in {
+            if predicate(n) {
+                out <- n
+            }
+        }
+        close(out)
+    }()
+    return out
+}
+```
+
+在上述函数中，筛选元素的主要算法保持不变。我们将每个值与谓词进行测试；如果谓词返回 true，我们将保留该值（通过发送到输出通道）；否则，我们将丢弃它。注意这里使用 go 关键字。尽管这个函数立即执行，但它是在自己的 goroutine 上启动的。函数立即返回 out 通道，尽管 goroutine 上的评估不一定完成了计算。
+
+接下来我们将以类似的方式重构 Map 函数。这与 Filter 函数的变化类似。我们将使用通道接收函数的输入，使用通道返回输出，并在 goroutine 中运行实际的映射逻辑，我们在此 goroutine 启动之前从函数返回通道：
+
+```go
+func MapNode[A any](in <-chan A, mapf MapFunc[A]) <-chan A {
+    out := make(chan A)
+    go func() {
+        for n := range in {
+            out <- mapf(n)
+        }
+        close(out)
+    }()
+    return out
+}
+
+```
+
+到目前为止，我们已经根据这个新设计重构了两个函数。接下来，让我们解决向这些函数提供输入的问题。从函数签名来看，我们需要在类型为 A 的通道上接收数据。因此，任何能够提供这个的函数都可以用作我们函数的输入。我们将这类函数称为生成器。我们创建的第一个生成器接受类型为 A 的可变参数输入，并将这些值推送到通道上：
+
+```go
+func Generator[A any](input ...A) <-chan A {
+    out := make(chan A)
+    go func() {
+        for _, element := range input {
+            out <- element
+        }
+        close(out)
+    }()
+    return out
+}
+```
+
+如你所见，主要逻辑仍然类似于之前的 Filter 和 Map 实现。主要的区别是我们不再通过通道接收值，而是通过某种其他数据结构（在这种情况下，是可变参数输入）。这也可以是一个读取文件并将每一行放置在通道上的函数。这类似于我们早期 Unix 示例中的 cat 命令。
+
+```go
+func Cat(filepath string) <-chan string {
+    out := make(chan string)
+    f, err := ioutil.ReadFile(filepath)
+    if err != nil {
+        panic(err)
+    }
+    go func() {
+        lines := strings.Split(string(f), "\n")
+        for _, line := range lines {
+            out <- line
+        }
+        close(out)
+    }()
+    return out
+}
+```
+
+关键点是我们的函数将值放在通道上并返回这个通道。它如何获取这些值对于构建我们的管道来说并不太重要。在我们能够端到端测试这个实现之前，我们还有一个障碍要跨越。在这种设置中，每个节点都会向通道写入数据，但是为了在最后收集输出，我们希望将其存储在一个更常见的数据结构中。至少在我们的示例中，切片是完美的结构。我们可以称这种类型的函数为收集器。收集器接受通道作为输入，并返回元素的切片作为输出。本质上，它执行的是生成器的反向操作：
+
+```go
+func Collector[A any](in <-chan A) []A {
+    output := []A{}
+    for n := range in {
+        output = append(output, n)
+    }
+    return output
+}
+```
+
+有了这些，我们可以将它们全部串联成一个单一的管道。为了演示这一点，在我们的 main 函数中，我们将使用 Generator 推送一些数字到通道。然后，我们使用 FilterNode 仅保留偶数。这些数字随后使用 MapNode 平方，最后，我们使用 Collector 函数收集输出到切片中：
+
+```go
+func main(){
+    generated := Generator(1, 2, 3, 4)
+    filtered := FilterNode(generated, func(i int) bool { return i%2 == 0 })
+    mapped := MapNode(filtered, func(i int) int { return i * 2 })
+    collected := Collector(mapped)
+    fmt.Printf("%v\n", collected)
+}
+```
+
+运行这个的输出是：
+
+```
+[4 8]
+```
+
+### 改进后的函数串联
+
+初步的函数串联方法是可行的解决方案，但存在一些开销，因为我们需要管理将正确的通道传递给每一个后续函数。我们希望达到的目标是让使用我们这套体系的工程师只需关注要调用哪些函数以及调用顺序，而无需关心通道在底层是如何操作的；我们可以将其实现细节视为黑盒。在本节中，我们将实现的功能让我们能够像这样组合函数：
+
+```go
+out := pkg.ChainPipes(generated,
+    pkg.CurriedFilterNode(func(i int) bool { return i%2 == 0 }),
+    pkg.CurriedMapNode(func(i int) int { return i * i }))
+```
+
+这段代码片段预示了即将实现的内容。为了像这样串联函数，我们需要利用函数柯里化。我们一步步来。我们要达成的目标是通过向 ChainPipes 传递函数来实现函数组合，就像前面的代码片段所示。Go 有严格的类型系统，为了让这个函数工作得更好，我们想定义一个自定义类型，用于此类函数，这将允许我们在函数签名中使用它，并让编译器为我们进行类型检查。
+
+首先，我们将为操作数据的主要函数定义我们自己的类型。我们称之为“节点”（Nodes）。基于之前的讨论，我们可以定义三种不同类型的节点：生成通道的节点、接收通道并返回新通道的节点，以及最后，接收通道并返回具体数据结构（如切片）的节点：
+
+```go
+type (
+    Node[A any] func(<-chan A) <-chan A
+    GeneratorNode[A any] func() <-chan A
+    CollectorNode[A any] func(<-chan A) []A
+)
+```
+
+这些类型定义构成了可以用来串联我们应用程序的函数类型的主体。有了这些，我们可以定义 ChainPipes 函数如下：
+
+```go
+func ChainPipes[A any](in <-chan A, nodes ...Node[A]) []A {
+    for _, node := range nodes {
+        in = node(in)
+    }
+    return Collector(in)
+}
+```
+
+上述代码创建了一个 ChainPipes 函数，它接受一个通道作为输入和一系列节点。最后，它将调用默认的收集器并以[]A 类型的切片返回数据。请注意，一个限制是我们假设整个链中的每个节点具有兼容的类型（A）。
+
+为了让类型系统工作，每个节点都需要具有相同的功能签名。在初始设置中，这是困难的，因为我们已经有 Filter 和 Map 两个不同的函数签名：
+
+```go
+func FilterNode[A any](in <-chan A, predicate Predicate[A]) <-chan A
+func MapNode[A any](in <-chan A, mapf MapFunc[A]) <-chan A
+```
+
+更多函数意味着更多的不同函数签名。因此，需要对这些函数进行重构，使它们遵守相同类型签名。我们已经通过函数柯里化学会了如何做到这一点。我们需要创建两个新函数，每个函数返回类型为 Node 的函数。每个函数都将原始的 Filter 和 Map 功能内建，但返回一个期望接收通道作为输入（因此函数被部分应用）的新函数：
+
+```go
+func CurriedFilterNode[A any](p Predicate[A]) Node[A] {
+    // 实现...
+}
+
+func CurriedMapNode[A any](mapFn MapFunc[A]) Node[A] {
+    // 实现...
+}
+```
+
+在前面的例子中，我们可以看到每个函数的核心逻辑保持不变。然而，函数被调用时不是立即执行，而是返回一个新的函数，该函数期望接收通道作为输入并返回通道作为输出。在这个匿名函数内部，我们分别编码了 Filter 和 Map 的逻辑。
+
+由于返回类型是 Node，这意味着当我们调用 CurriedFilterNode 函数时，我们没有得到结果，而是得到了一个需要在稍后阶段调用以实际计算过滤值列表的另一个函数。
+
+我们还可以进一步抽象 ChainPipes 函数，使其脱离生成器：
+
+```go
+func ChainPipes[A any](gn GeneratorNode[A], nodes ...Node[A]) []A {
+    in := gn()
+    // 其余实现...
+}
+```
+
+有了这个更改，意味着在调用函数时，我们需要另一个柯里化的函数来提供生成器。这可以在线完成，但为了清晰起见，以下示例是一个在包级别存在的单独函数。在这种情况下，我们将使用前面引入的 Cat 函数并返回柯里化版本：
+
+```go
+func CurriedCat(filepath string) func() <-chan string {
+    // 实现...
+}
+```
+
+现在，我们既可以将生成器也可以将节点传递给这个函数：
+
+```go
+func main() {
+    out := ChainPipes[string](CurriedCat("./main.go"),
+        CurriedFilterNode(func(s string) bool { return strings.Contains(s, "func") }),
+        CurriedMapNode(func(i string) string { return "line contains func: " + i }))
+    fmt.Printf("%v\n", out)
+}
+```
+
+注意到在前面的示例中，我们确实不得不给 ChainPipes 一个类型提示来指示 CurriedCat 函数的结果类型。
+
+### 总结
+
+在本章中，我们探讨了如何在遵循函数式编程范式编写代码时使用 Go 的并发模型。我们从对并发性、并行性和分布式计算之间差异的简短讨论开始，以明确并发性的具体含义。一旦我们确定并发性是同时进行多项任务的能力（尽管不一定是同时），我们就研究了如何利用通道和 goroutines 重写第 6 章中的函数以实现并发。本章的结论部分，我们着眼于管道，这是一种通过组合函数并利用通道来编排数据流创建程序的方法。我们还研究了如何创建一个高阶函数（ChainPipes）来组合函数，并观察到通过使用函数柯里化，我们可以在不牺牲类型安全的情况下创建符合我们类型系统的函数。

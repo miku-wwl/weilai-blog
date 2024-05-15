@@ -1,0 +1,239 @@
+---
+title: Functional Programming Libraries
+description: Functional Programming Libraries
+date: 2024-05-13
+tags: ["code", "rehype pretty", "mdx"]
+published: true
+---
+
+### 函数式编程库
+
+### 非泛型时代创建 FP 函数的库
+
+在泛型引入之前，处理集合数据结构（如列表、数组等）时，往往需要针对特定类型编写操作函数，如过滤、映射等。虽然直接为特定数据结构实现功能可以获得性能优势，但这也牺牲了代码的通用性和可维护性。随着认识的深入，人们发现许多集合操作具有相似的逻辑，催生了抽象这些操作的需求。
+
+解决策略
+
+- 使用空接口(interface{})：虽然 Go 中的空接口可以作为所有类型的容器，但这牺牲了类型安全和运行时效率。
+- 代码生成：作为一种替代方案，在编译时自动生成针对特定类型的函数代码，以实现泛型类似的功能。例如，Pie 库利用特殊的注释指令（pragma）在编译时为给定类型生成 FP 风格的操作函数。
+
+库与自定义实现的选择
+
+- 使用库可以提供更高效的实现并避免重复造轮子，但可能增加依赖复杂度。
+- 在 Go 引入泛型后，自定义实现变得更容易，尤其是当你希望保持项目依赖轻量级时。
+- 对于 Go 泛型之前的版本，库是更优的选择，因为自建泛型机制较为复杂且易出错。
+
+代码生成库实例：Pie
+Pie 是一个由 Elliot Chance 开发的库，它利用代码生成技术为 Go 语言（特别是 1.17 及以下版本）提供了操作集合数据的泛型功能。Pie 分为两个版本：
+
+- 版本 1：面向 Go 1.17 及以下版本，提供直接操作常见数据类型的功能，并支持为自定义类型生成函数。
+- 版本 2：针对 Go 1.18 及以上版本，利用 Go 的泛型特性直接实现泛型功能。
+
+### 使用 Pie 内置函数
+
+Pie 库原生支持三种数据类型的操作：
+
+- []string
+- []float64
+- []int
+  这些类型十分常见，因此 Pie 默认支持它们。本章示例中，我们展示了如何过滤整数切片以保留偶数，然后使用 Map 函数对它们进行平方。在 Pie 中执行这些操作同样简单，遵循我们在第 6 章及之后章节中实现的相同逻辑。由于我们将通过库来实现这些功能，首先查看 go.mod 文件以确定使用的 Pie 版本：
+
+```go
+go 1.17
+require github.com/elliotchance/pie v1.39.0
+```
+
+```gopackage main
+
+import (
+	"fmt"
+	"github.com/elliotchance/pie/pie"
+)
+
+func main() {
+	out := pie.Ints{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}.
+		Filter(func(i int) bool { return i%2 == 0 }).
+		Map(func(i int) int { return i * i })
+	fmt.Printf("result: %v\n", out)
+}
+```
+
+这段代码将输出 result: [4 16 36 64 100]，符合预期。Pie 让我们能够构建并串联函数，类似于本书至今介绍的方法。开箱即用，这仅适用于字符串、整数和浮点数的切片。每种类型都需要库中的自定义实现。通过将函数绑定到具体类型，它可以支持针对不同数据类型定义的多个 Filter 和 Map 函数。这也是我们自己尝试做的，正如之前指出的，这是一个耗时且重复的过程。
+
+Pie 通过使用代码生成来为每个数据类型生成实现，以此减少了一些重复工作。代码生成在该库中的具体细节超出了本书范围，但我鼓励大家访问 GitHub 上的库本身并深入代码，以更好地理解它是如何构建的，确实非常有趣。
+
+Pie 提供了大量函数。要获取最新列表及其每个函数的描述，请访问 GitHub 上的 wiki 页面：https://github.com/elliotchance/pie/tree/master/v1。
+
+Pie 用于自定义数据类型
+若想为自定义数据类型使用 Pie，需要生成相应的代码：
+
+- 设置结构体：定义一个代表狗的结构体 Dog，以及其切片类型别名 Dogs。同时使用代码生成指令。
+
+```go
+//go:generate pie Dogs.*
+type Dogs []Dog
+type Dog struct {
+    Name string
+    Age  int
+}
+```
+
+- 生成代码：运行 go generate 命令，为自定义数据类型生成 Pie 的所有函数。这会在类型定义的同一目录下创建一个名为 dogs_pie.go 的新文件。通过查看生成的文件，可以看到为 Dog 数据类型生成的函数，比如 Reverse 函数。
+
+- 使用生成的函数：我们还可以找到为 Dog 数据类型定义的 Filter 和 Map 函数。这种做法表明，如果你为许多不同的类型生成这些函数，你的代码库会因这些相似但不完全相同的代码而变得庞大。生成的可执行文件也会因此增大，虽然通常不需要考虑这个问题，但如果目标平台内存资源有限，这可能成为一个问题。
+
+### 泛型后的函数式编程库
+
+Pie 与泛型
+我们首先看的库是 Pie。在前一节中，我们提到目前有两个版本的 Pie 可用：v1，面向泛型引入之前的 Go 版本；v2，则在提供相同功能的同时利用了泛型。v2 处于积极维护状态，因此预计随着时间推移，v1 和 v2 的功能将不再保持一致。不过，Go 社区在尽可能的情况下都会采用最新版本的 Go，所以我预计这对任何人来说都不会成为障碍。
+
+在深入代码之前，这是 go.mod 文件的一个片段，只是为了强调我们正在使用的 Pie 版本：
+
+```go
+go 1.18
+require github.com/elliotchance/pie/v2 v2.3.0
+```
+
+go 1.18 声明表明我们可以使用泛型，因为泛型是在这个版本中引入的。1.18 以上的任何版本都将适用于我们即将看到的示例。
+
+与非泛型示例一样，我们将处理 Dog 结构体和[]Dog 类型的切片。与之前的非泛型示例不同，我们无需添加编译器指令来生成任何代码，也不需要为[]Dog 定义类型别名（尽管在实际应用中这样做仍是个好习惯）：
+
+```go
+type Dog struct {
+    Name string
+    Age  int
+}
+```
+
+```go
+import "github.com/elliotchance/pie/v2"
+
+func main() {
+    MyDogs := []Dog{
+        {"Bucky", 1},
+        {"Keeno", 15},
+        {"Tala", 16},
+        {"Amigo", 7},
+    }
+    result := pie.Of(MyDogs).
+        Filter(func(d Dog) bool { return d.Age > 10 }).
+        Map(func(d Dog) Dog {
+            d.Name = strings.ToUpper(d.Name)
+            return d
+        }).
+        SortUsing(func(a, b Dog) bool { return a.Age < b.Age })
+    fmt.Printf("out: %v\n", result)
+}
+```
+
+代码与非泛型版本非常相似。但是，没有使用任何代码生成来实现这一点。另外，请注意 pie.Of()已经确定了我们正在操作的数据类型。在非泛型版本中，这就是我们需要为[]Dog 创建类型别名的部分原因——这样代码生成器才能为正确的切片类型使用 Filter、Map、Reduce 或其他方法，并将其附加为点记法风格的函数链式调用。有了泛型，我们不再需要这样做。总的来说，如果您想向团队引入泛型，Pie 是一个很好的库，因为面向对象开发人员熟悉的点记法风格的函数调用链看起来很自然。如前所述，它有一套丰富的开箱即用函数。接下来，让我们看看一个基于 Lodash 的函数式编程库。
+
+### Lodash，面向 go
+
+lo(https://github.com/samber/lo) 是一个类似于 Pie 的库，为 Go 添加了易于使用的函数，目前非常流行。它受到 JavaScript 中极其流行的 Lodash 库（https://github.com/lodash/lodash）启发，该库在GitHub上拥有超过55,000颗星，被广泛使用。
+当前，lo 支持 38 个操作切片的函数，其中 16 个操作映射数据类型，还有一系列用于搜索、元组、通道和集合交集风格操作的便捷函数。在这里概述所有函数并不实际，但如果你的问题需要操作这些常见的容器数据类型，最好先检查这个库是否满足你的需求，然后再重新发明轮子。本节中，我们将以与 Pie 类似的示例来考察这个库。
+
+### 使用 lo 的示例实现
+
+由于我们引入了一个新库，下面的代码片段显示了我们将用于这些示例的库和版本：
+
+```go
+go 1.18
+require (
+    github.com/samber/lo v1.37.0
+)
+```
+
+为了演示这个库，我们将再次使用 main 函数和一个狗的切片。这次，我们想做以下事情：首先，去重切片，使切片中的每个元素都是唯一的。然后，将所有狗的名字转换为大写形式。这是我们将会打印的结果。
+
+```go
+func main() {
+    result := lo.Map(lo.Uniq(MyDogs), func(d Dog, i int) Dog {
+        d.Name = strings.ToUpper(d.Name)
+        return d
+    })
+    fmt.Printf("%v\n", result)
+}
+```
+
+还有一个值得一提的额外特性。lo 包含了一部分库功能，支持并发函数调用。在 lo 有一个 lo/parallel 包，支持函数调用的并行评估。让我们重写我们的示例，让 Map 函数并发工作（同时注意这个包称为 parallel，但实际上讨论的是并发代码）。
+
+首先，这里是导入语句和导入别名：
+
+```go
+lop "github.com/samber/lo/parallel"
+```
+
+接下来，以下是并发运行 Map 函数的代码，Uniq 函数仍然顺序执行：
+
+```go
+result := lop.Map(lo.Uniq(MyDogs), func(d Dog, i int) Dog {
+    d.Name = strings.ToUpper(d.Name)
+    return d
+})
+fmt.Printf("%v\n", result)
+```
+
+### Mo，面向 Go 的 Monad 风格库
+
+Mo 是一个为 Go 语言增加类似 Monad 数据结构支持的库，相对较为流行。它完全支持 Go 1.18 及以上版本，因此围绕泛型构建。您可以在此处找到该库本身：https://github.com/samber/mo。
+
+花时间探索这个库并阅读其文档是值得的，尤其是考虑到在您阅读本书时，这些内容可能已发生变化。本质上，它的工作方式与第 5 章中的 Maybe 实现相似，尽管在这个库中，该类型被称为 Option。我们可以创建一个可选地包含值的数据类型，同时也能表示值的缺失。这种数据类型接着支持函数以转换数据或以安全处理 nil 的方式获取数据。例如，让我们创建一个包含狗的 Option：
+
+```go
+func main() {
+    maybe := mo.Some(Dog{"Bucky", 1})
+    getOrElse := maybe.OrElse(Dog{})
+    fmt.Println(getOrElse)
+}
+```
+
+这将打印：
+
+```
+{Bucky 1}
+```
+
+如果我们用此来表示一个 nil 值，我们仍然能够以类型安全的方式访问它。OrElse 函数会确保在函数调用的结果中使用一个备份值，即由调用者提供的默认值。例如，假设我们在 main 函数中添加以下代码：
+
+```go
+maybe2 := mo.None[Dog]()
+getOrElse2 := maybe2.OrElse(Dog{"Default", -1})
+fmt.Println(getOrElse2)
+```
+
+输出将是这样的：
+
+```
+{Default -1}
+```
+
+该库还支持其他类型，比如 Future 和 Task。但其中一个特别有用的是 Result 类型，它与 Maybe 类型大致相似，但旨在处理可能包含错误值的情况。我们将在以下代码段中演示这一点。首先，我们将调用 Ok()函数，它使用一个有效的 Dog 对象创建 Result 类型。在第二种情况下，我们将使用错误而非 Dog 对象创建 Result 类型。在这两种情况下，我们都将尝试获取并打印结果以及错误信息：
+
+```go
+ok := mo.Ok(MyDogs[0])
+result1 := ok.OrElse(Dog{})
+err1 := ok.Error()
+fmt.Println(result1, err1)
+
+err := errors.New("dog not found")
+ok2 := mo.Err[Dog](err)
+result2 := ok2.OrElse(Dog{"Default", -1})
+err2 := ok2.Error()
+fmt.Println(result2, err2)
+```
+
+如果运行这个函数，我们将得到以下输出：
+
+```go
+{Bucky 1} <nil>
+{Default -1} dog not found
+```
+
+这向我们展示了基于 Result 类型的错误值内容，其行为会有所不同。在第一个实例中，因为我们没有错误，所以得到了正确的狗并且错误为空。在第二个实例中，我们得到了我们在 OrElse 语句中提供的默认值，以及底层的错误信息。
+
+### 总结
+
+本章中，我们研究了实现函数式编程范式概念的库。我们首先查看了 Pie，这是一个无论是在 Go 1.18 引入泛型之前还是之后，都能帮助用户构建函数式编程风格代码的库。特别是对于泛型之前的版本，我们研究了为自定义类型生成代码以获得类似泛型行为的方法。泛型的引入使得 Pie 能够轻松展示我们如何创建如 Map 和 Filter 这样的函数。
+
+接着，我们了解了受 Lodash 启发的 Go 库 lo。这个库支持对切片、映射等容器数据类型操作的常见函数，但与 Pie 不同，它采用了嵌套方式来进行函数链式调用，而不是点记法语法。lo 确实为某些函数提供了并发实现，因此，如果性能是一个考虑因素且并发看起来是合适的解决方案，查看这个库是个好主意。
